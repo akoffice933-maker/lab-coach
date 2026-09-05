@@ -212,14 +212,24 @@ def check_hostname_allowed(host: str, s: Settings, resolved: list[str] | None = 
                         resolved_ips=tuple(ips), kind="hostname")
 
 
+OFFLINE_CTF_LABELS = frozenset({"offline", "local-files", "files"})
+
+
 def check_target_allowed(target: str, s: Settings) -> PolicyResult:
-    """Единая точка: IP | hostname | http(s) URL. F-POL-07 + делегирование."""
+    """Единая точка: IP | hostname | http(s) URL | CTF offline. F-POL-07 + делегирование."""
     t = (target or "").strip()
     if not t:
         return PolicyResult(False, "bad_target", "Цель не в lab-сети: пустая цель.", "empty target")
     if len(t) > 2048:
         return PolicyResult(False, "too_long",
                             "Отказ: слишком длинная цель (>2048).", f"target length {len(t)}")
+    # Файловые CTF (rev/crypto/forensics): сессия без сети. Скан CLI/MCP должен отказать отдельно.
+    if t.lower() in OFFLINE_CTF_LABELS:
+        if s.lab_platform in ("ctf", "htb"):
+            return PolicyResult(True, "offline_ctf", "", "offline files-only ctf session", kind="offline")
+        return PolicyResult(False, "offline_not_ctf",
+                            "Метка offline только в профиле ctf/htb (файловый таск без docker).",
+                            "offline label outside ctf/htb", kind="offline")
     low = t.lower()
     if low.startswith(("http://", "https://")):
         return check_url_allowed(t, s)

@@ -87,6 +87,31 @@ STEP_GUIDES: dict[int, dict] = {
                  "Остановить машину/откатить снапшот, проверить, что notes.md полон.")},
 }
 
+# CTF docker: ping не отвечает, порт только из карточки, нет privesc-машины.
+CTF_STEP_GUIDES: dict[int, dict] = {
+    0: {"title": "Подготовка (CTF docker)",
+        "body": ("Каркас сессии: {subdirs}. SPAWNED_TARGET = {target} (один инстанс). "
+                 "Ping не делать: HTB docker на ping не отвечает. "
+                 "Открыть в браузере http://{target}/ если web. Зафиксировать scope в notes.md.")},
+    1: {"title": "Разведка (CTF)",
+        "body": ("Только порт из карточки, не -p- и не подсеть. "
+                 "Один gentle Lab Coach scan {target}. Заголовки/devtools, robots.txt. "
+                 "Вложения таска — локально (zip площадки часто с паролем hackthebox).")},
+    2: {"title": "Изучение исходника",
+        "body": ("Читать выданный код: куда попадает ввод (время/format/filename). "
+                 "Класс дыры — explain, без payload. Версии — только чтение advisory.")},
+    3: {"title": "Проверка гипотезы",
+        "body": ("Один аккуратный вектор руками, результат в notes. "
+                 "Флаг не добывает агент — человек сдаёт HTB{{…}} на площадке.")},
+    4: {"title": "Заметки / loot",
+        "body": ("Выводы в loot/, флаг только в loot/flags.txt сессии. Не в git и не в чужой чат.")},
+    5: {"title": "Защита (blue)",
+        "body": ("harden_checklist по классу: allowlist, без shell, обновления. Не атака.")},
+    6: {"title": "Финал",
+        "body": ("Сдать флаг на сайте, Terminate docker, очистить SPAWNED_TARGET, "
+                 "3 строки «чему научился» в notes.md.")},
+}
+
 
 def htb_root() -> str:
     from .config import load_settings
@@ -137,9 +162,13 @@ def init_session(machine: str, target: str) -> dict:
             f.write(NOTES_TEMPLATE.format(machine=machine.strip(), target=target, ts=ts))
     log_event(s.database_url, user=f"mcp:{s.agent_role}", action="session_init", target=target[:200],
               detail=f"[{s.agent_role}] session {machine.strip()}")
+    ctf = s.lab_platform == "ctf" or bool(s.spawned_target)
+    hint = ("Дальше: get_plan_step(0). CTF docker: не ping, браузер http://цель/ и исходники."
+            if ctf else
+            "Дальше: get_plan_step(0), затем ping и /etc/hosts.")
     return {"ok": True, "dir": d, "target": target,
             "subdirs": list(SUBDIRS),
-            "hint": "Дальше: get_plan_step(0), затем ping и /etc/hosts."}
+            "hint": hint}
 
 
 def _notes_stage_done(notes: str, markers: tuple[str, ...]) -> bool:
@@ -219,11 +248,12 @@ def get_plan_step(step: int | str, target: str | None = None) -> dict:
         step_n = int(str(step).strip())
     except (ValueError, AttributeError):
         return {"ok": False, "error": "step должен быть числом 0-6."}
-    guide = STEP_GUIDES.get(step_n)
-    if not guide:
-        return {"ok": False, "error": "step должен быть 0-6."}
     from .config import load_settings
     s = load_settings()
+    guides = CTF_STEP_GUIDES if (s.lab_platform == "ctf" or bool(s.spawned_target)) else STEP_GUIDES
+    guide = guides.get(step_n)
+    if not guide:
+        return {"ok": False, "error": "step должен быть 0-6."}
     t = (target or "").strip()
     warn = ""
     if t:
@@ -410,10 +440,16 @@ CTF_PLAYBOOKS: dict[str, dict] = {
     "blockchain": {"title": "Blockchain",
             "body": ("Работать только с RPC/сетью из карточки задания. Локальный форк/тестнет для отладки. "
                      "Приватные ключи задания — только в loot/, никуда не публиковать.")},
+    "warmup": {"title": "Warmup",
+               "body": ("Try Out / ивент 1434: сначала описание и вложения, не brute. "
+                        "Если есть Spawn — SPAWNED_TARGET=IP:port, ping не ждать. "
+                        "Web-UI открыть в браузере. Zip: пароль площадки hackthebox. "
+                        "Один gentle-скан, класс дыры через explain, флаг сдаёт человек.")},
 }
 CTF_ALIASES = {"forensic": "forensics", "rev": "reversing",
                "reverse": "reversing", "pwnable": "pwn", "webapp": "web",
-               "steg": "forensics", "stego": "forensics"}
+               "steg": "forensics", "stego": "forensics",
+               "warm-up": "warmup", "warm": "warmup"}
 
 
 def get_ctf_playbook(category: str | None = None) -> dict:

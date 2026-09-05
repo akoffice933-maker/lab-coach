@@ -161,6 +161,11 @@ def tool_scan_lab_target(args: dict) -> dict:
         log_event(s.database_url, user="mcp", action="scan_denied", target=target[:200],
                   detail=f"{verdict.reason}; {verdict.log_detail}")
         return _err(verdict.user_message or "цель не в lab-сети.")
+    if verdict.kind == "offline":
+        log_event(s.database_url, user="mcp", action="scan_denied", target=target[:200],
+                  detail="offline ctf: no network scan")
+        return _err("файловый CTF (offline) — сеть не сканируем. "
+                    "init_session + get_ctf_playbook(reversing|crypto|forensics).")
     from .scanners import run_lab_scanners
     job = run_lab_scanners(target, s)
     if job.get("blocked"):

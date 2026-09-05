@@ -102,6 +102,12 @@ def cmd_scan(args) -> int:
                   detail=f"{verdict.reason}; {verdict.log_detail}")
         print(f"Отказ: {verdict.user_message or 'цель не в lab-сети.'}")
         return 3
+    if verdict.kind == "offline":
+        log_event(s.database_url, user=user, action="scan_denied", target=target[:200],
+                  detail="offline ctf: no network scan")
+        print("Отказ: файловый CTF (offline) — сеть не сканируем. "
+              "init_session(<slug>, offline) + get_ctf_playbook(reversing|crypto|forensics).")
+        return 3
 
     job = run_lab_scanners(target, s)
     if job.get("blocked"):
@@ -180,6 +186,11 @@ def cmd_doctor(_args) -> int:
         print("ВНИМАНИЕ: профиль {} без признаков VPN (нет 10/8 локально). Подключите .ovpn.".format(s.lab_platform))
     if s.lab_platform == "hackthissite":
         print("Профиль hackthissite: сканирование запрещено, доступен только разбор текста миссии.")
+    if s.lab_platform == "ctf" and not s.spawned_target:
+        print("Профиль ctf: сеть deny без SPAWNED_TARGET. "
+              "Файловые таски (rev/crypto): init_session(<slug>, offline).")
+    if s.lab_platform == "ctf" and s.spawned_target:
+        print("CTF docker: ping не отвечает; сканируйте только порт из карточки.")
     return 0
 
 

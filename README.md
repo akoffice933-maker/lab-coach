@@ -2,6 +2,8 @@
 
 Учебный defensive-ассистент для изолированного полигона. Версия пакета **1.8.0** (ТЗ 1.4 + Ollama/MCP/роли).
 
+**Для Hack The Box** ([hackthebox.com](https://www.hackthebox.com/), CTF Try Out [ивент 1434](https://ctf.hackthebox.com/event/1434)): агент — **преподаватель рядом**, не автопрохождение. Он держит scope (один IP:port или `offline` для файловых тасков), плейбуки категорий, gentle-скан своего инстанса и разбор **класса** дыры. Флаги, jailbreak, payload и «пройти уровень за вас» — **не его работа**; сдаёте вы на площадке. Неофициальные зеркала вроде опечатки «havkthebox.ru» не поддерживаются — только официальный HTB.
+
 **Только lab.** Сканируются лишь адреса вашей учебной сети (RFC1918 / ULA / явно заданные lab CIDR).
 Публичные IP отклоняются. Эксплойты не запускаются. Продукт не логинится и не меняет пароли.
 
@@ -127,7 +129,7 @@ LLM_PROVIDER=ollama OLLAMA_MODEL=qwen2.5:7b python -m lab_coach doctor
 - `MAP-TO-MY-SITE.md` — как находки из lab превращать в действия на своём сайте без скана продакшена.
 - `MCP-AGENT-GUIDE.md` — подключение ИИ-агента (Claude/Cursor) и пример coach-сессии.
 - `RED-BLUE-GUIDE.md` — учения: красный и синий агенты, матрица ролей, 3 раунда.
-- `CTF-ARENA-GUIDE.md` + `.env.ctf` — агенты на CTF-арене HTB (профиль `ctf`, инстанс через `SPAWNED_TARGET`).
+- `CTF-ARENA-GUIDE.md` + `.env.ctf` + `mcp_config.ctf.example.json` — [CTF Try Out, ивент 1434](https://ctf.hackthebox.com/event/1434) (профиль `ctf`, только свой `SPAWNED_TARGET`).
 - `ATTACK-DEFENSE-LAB.md` — программа «все классы атак + защита»: 16 модулей A–E с трекером (только легальные полигоны).
 
 ## Структура

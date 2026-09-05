@@ -62,6 +62,10 @@ LOCAL_KB: list[tuple[tuple[str, ...], str, str]] = [
     (("jwt", "session fixation", "фиксация сессии", "угон сессии"), "Сессии и токены",
      "Слабые/вечные токены, фиксация сессии, отсутствие привязок. СЕССИИ НЕ ПОДМЕНЯЕМ. "
      "Защита: длинные случайные id, rotation после входа, HttpOnly/Secure/SameSite, короткие TTL, инвалидация на выходе."),
+    (("command injection", "os command", "инъекц в команд", "cmd injection", "date format"), "Инъекция в команду ОС",
+     "Пользовательская строка попадает в argv/shell (иногда через формат даты/времени). "
+     "Эксплойты и готовые строки НЕ выдаём. В lab: отличите PHP date() от вызова date(1) через shell; "
+     "защита — allowlist формата, без shell, escapeshellarg. Почитать: OWASP Command Injection."),
 ]
 
 
@@ -95,7 +99,8 @@ def finding_danger(f: dict) -> str:
 
 REFUSAL_TRIGGERS = (
     "poc", "proof of concept", "reverse shell", "войти без пароля", "вход без пароля",
-    "сменить пароль на", "обход", "payload", "shellcode", "metasploit",
+    "сменить пароль на", "обход авторизации", "обход аутентификации",
+    "payload", "shellcode", "metasploit",
 )
 
 

@@ -1,52 +1,63 @@
-# CTF-арена HTB: агенты в деле (v1.8.0, профиль `ctf`)
+# CTF Try Out HTB — ивент 1434 (профиль `ctf`)
 
-Стартовая точка: **CTF Try Out** — постоянная тренировочная арена HTB
-(Jeopardy, онлайн, команды до 5, 37 сценариев в 11 категориях, вход без пароля).
-Таски живут на docker-инстансах с публичным `IP:port`, VPN не нужен.
+Площадка: [ctf.hackthebox.com/event/1434](https://ctf.hackthebox.com/event/1434)  
+Описание: [CTF Try Out](https://ctf.hackthebox.com/event/details/ctf-try-out-1434) — демо-арена HTB, вход без пароля ивента, команда до 5.
 
-## Правила (зашиты в режим, но знай их)
+Категории Try Out (по [гайду HTB](https://help.hackthebox.com/en/articles/5200851-ctf-user-s-guide)): **Warmup**, Web, Forensics, Reversing, Misc, Crypto.  
+Docker: публичный `IP:port`, **VPN не нужен**, **ping не отвечает** — только указанный порт.  
+Zip вложений: пароль площадки всегда `hackthebox`. Флаг обычно `HTB{...}`, сдаёт **человек** в форме ивента.
+
+Lab Coach нужен, чтобы **учиться на официальном HTB** (не «проходить сайт за вас»): scope, плейбук, заметки, класс уязвимости. Флаги и эксплойты — человек. Неофициальные зеркала не используем.
+
+## Правила
 
 Не атаковать инфраструктуру платформы и другие команды, не брутить форму сдачи флагов,
 не делиться флагами/райтапами с другими командами, никакого DDoS и агрессивных сканов,
-одна команда на ивент. Флаги — только в `loot/flags.txt` сессии, сдаёт человек на платформе.
+одна команда на ивент. Флаги — только в `loot/flags.txt` сессии (не в git).
 
-## Настройка (человек, 5 минут)
+## Настройка
 
-1. На ctf.hackthebox.com: Sign Up → join/создать команду (до 5).
-2. Открыть таск → Spawn → взять `IP:port` из карточки.
-3. `cp practice/.env.ctf .env`, вписать `ADMIN_IDS` и `SPAWNED_TARGET=<IP:port>` инстанса.
-4. `python -m lab_coach doctor` → `platform: ctf`. Проверка скоупа:
-   `scan <свой IP:port>` — разрешён; любой другой адрес — отказ.
+1. Sign Up на ивенте 1434 → join/создать команду.
+2. Начать с **Warmup** → Spawn Docker → скопировать `IP:port`.
+3. Играть в браузере / клиенте по карточке.
+4. Lab Coach:
 
-## Как играют агенты
-
-- **Triage:** `get_ctf_playbook(web|pwn|crypto|forensics|reversing|misc|osint|blockchain)` —
-  чек-лист категории + правила. Доступен red, blue и coach.
-- **Web-таски:** как обычно — `scan_lab_target(IP:port)` (один gentle-скан, не флудить:
-  инстанс общий по времени жизни), `explain_report`, находки в notes.
-- **Офлайн-категории** (pwn/crypto/forensics/reversing): файлы таска качаешь ТЫ,
-  агент разбирает их по плейбуку — всё локально, `read_session_file`/`log_note` для памяти.
-  Чужой бинарь на хосте не запускать — только изолированная VM/снапшот.
-- **Blue в CTF:** ревью выданных исходников через `explain_report` + `harden_checklist`
-  («как это чинится») — тренировка защитного мышления на реальном коде.
-- **Сессия:** `init_session(<task>, <IP:port>)` — scope один инстанс. Новый таск = новая сессия
-  + новый `SPAWNED_TARGET` в `.env` (старый очистить).
-
-## MCP-конфиг агентов
-
-Тот же `mcp_config.example.json`, в env добавить:
-
-```json
-"LAB_PLATFORM": "ctf",
-"SPAWNED_TARGET": "203.0.113.50:8080",
-"AGENT_ROLE": "red"
+```bash
+cd lab-coach
+cp practice/.env.ctf .env
+# ADMIN_IDS и SPAWNED_TARGET=<IP:port из карточки>
+python -m lab_coach doctor          # platform: ctf, spawned_target_set: true
+python -m lab_coach scan <IP:port>  # свой инстанс — ок; любой другой — отказ
 ```
 
-Красному — второй чат с `"AGENT_ROLE": "blue"`. Первый вопрос каждому: «прочитай свой бриф».
+5. Новый таск = новый `SPAWNED_TARGET` + `init_session(<slug>, <IP:port>)`. Старый IP очистить.
+6. **Файловые таски без docker** (Reversing / Crypto / Forensics, напр. zip с `satellite` + `.so`):  
+   `init_session(satellitehijack, offline)` — сеть не сканировать, бинарь **не** запускать на хосте.  
+   Плейбук: `get_ctf_playbook(reversing)`.
+7. Fullpwn-машины на CTF (если появятся) — это VPN и профиль `htb`, не `ctf`.
+
+MCP: `mcp_config.ctf.example.json` (`LAB_PLATFORM=ctf`, подставить `SPAWNED_TARGET`).
+
+## Как играем вместе (контракт)
+
+| Делаете вы | Делает Lab Coach / этот чат |
+|---|---|
+| Spawn, браузер, файлы таска, сдача флага | `get_ctf_playbook`, gentle-скан своего инстанса, класс находки |
+| Команды руками | `explain_mission` по тексту описания (без «достань флаг») |
+| notes / loot | `log_note`, `session_status` |
+
+Пришлите: **категория + название таска + IP:port** (без просьбы решить). Дальше — плейбук категории и scope, не walkthrough.
+
+## Агенты
+
+- **Triage:** `get_ctf_playbook(web|pwn|crypto|forensics|reversing|misc|osint|blockchain)`
+- **Web:** один `scan_lab_target(IP:port)`, не флудить
+- **Офлайн** (pwn/crypto/forensics/reversing): файлы качаете вы; бинарь не запускать на хосте
+- **Blue:** `explain_report` + `harden_checklist`
 
 ## Типичные ошибки
 
-- Сканишь без `SPAWNED_TARGET` → отказ (так и должно быть).
-- Несколько инстансов в одной сессии → запрещено, разводи по сессиям.
-- Флаг в чат другой команды / на форум до конца ивента → запрещено правилами.
-- `nmap -p-` по инстансу → лишнее; достаточно gentle-скана и ручного триажа.
+- Скан без `SPAWNED_TARGET` → отказ
+- Несколько инстансов в одной сессии → нет
+- `nmap -p-` / ping инстанса → ping молчит, порт только из карточки
+- Живой IP и флаги в git → нет

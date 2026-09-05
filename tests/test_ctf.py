@@ -75,8 +75,50 @@ def test_playbooks():
     w = coach.get_ctf_playbook("web")
     assert w["ok"] and "SPAWNED_TARGET" in w["playbook"] and "loot" in w["rules"]
     assert coach.get_ctf_playbook("rev")["category"] == "Reversing"
+    assert coach.get_ctf_playbook("warmup")["category"] == "Warmup"
     g = coach.get_ctf_playbook("quantum")
     assert g["ok"] and g["category"] == "Generic" and len(g["known"]) >= 8
+
+
+def test_offline_files_session_allowed():
+    s = ctf_settings(spawned_target="")
+    r = check_target_allowed("offline", s)
+    assert r.allowed and r.kind == "offline"
+    assert check_target_allowed("local-files", s).allowed
+
+
+def test_offline_not_on_custom():
+    from lab_coach.config import Settings
+    s = Settings(admin_ids=["1"], lab_platform="custom", allowed_lab_cidrs_raw="192.168.56.0/24")
+    assert not check_target_allowed("offline", s).allowed
+
+
+def test_http_url_spawned_allowed():
+    s = ctf_settings(spawned_target="203.0.113.50:30445")
+    assert check_target_allowed("http://203.0.113.50:30445/", s).allowed
+
+
+def test_init_session_offline(monkeypatch, tmp_path):
+    monkeypatch.setenv("LAB_COACH_STATE", str(tmp_path / "no-state.json"))
+    monkeypatch.setenv("LAB_PLATFORM", "ctf")
+    monkeypatch.setenv("SPAWNED_TARGET", "")
+    monkeypatch.setenv("HTB_DIR", str(tmp_path / "HTB"))
+    monkeypatch.setenv("ADMIN_IDS", "1")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///" + str(tmp_path / "lab.db"))
+    r = coach.init_session("satellitehijack", "offline")
+    assert r["ok"], r
+    assert "не ping" in r["hint"]
+
+
+def test_ctf_plan_step_no_ping(monkeypatch, tmp_path):
+    monkeypatch.setenv("LAB_COACH_STATE", str(tmp_path / "no-state.json"))
+    monkeypatch.setenv("LAB_PLATFORM", "ctf")
+    monkeypatch.setenv("SPAWNED_TARGET", "203.0.113.50:30445")
+    monkeypatch.setenv("ADMIN_IDS", "1")
+    r = coach.get_plan_step(0, "203.0.113.50:30445")
+    assert r["ok"]
+    assert "Ping не делать" in r["guide"]
+    assert "ping -c3" not in r["guide"]
 
 
 def test_matrix_ctf_tool_both_roles(monkeypatch, tmp_path):

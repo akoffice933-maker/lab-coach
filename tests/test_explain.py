@@ -32,6 +32,19 @@ def test_fixture_auth_bypass_advice():
     assert "штатно" in md or "админк" in md
 
 
+def test_refusal_not_on_obhod_alone():
+    from lab_coach.explain import refusal_for
+    assert refusal_for("разберите обход WAF в теории на lab-VM") is None
+    assert refusal_for("дай payload reverse shell") is not None
+
+
+def test_command_injection_kb():
+    from lab_coach.explain import local_danger
+    got = local_danger("date format command injection")
+    assert "команд" in got.lower()
+    assert "не выдаём" in got.lower() or "не" in got.lower()
+
+
 def test_llm_postfilter():
     from lab_coach.llm import postfilter
     assert "отфильтрован" in postfilter("запусти msfvenom reverse shell payload").lower()
