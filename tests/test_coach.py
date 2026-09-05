@@ -9,6 +9,7 @@ from lab_coach import coach
 
 
 def _env(monkeypatch, tmp_path):
+    monkeypatch.setenv("LAB_PLATFORM", "custom")
     monkeypatch.setenv("HTB_DIR", str(tmp_path / "HTB"))
     monkeypatch.setenv("ADMIN_IDS", "1")
     monkeypatch.setenv("ALLOWED_LAB_CIDRS", "192.168.56.0/24")

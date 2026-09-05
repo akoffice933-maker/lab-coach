@@ -10,6 +10,7 @@ from lab_coach.mcp import ROLE_TOOLS, _dispatch_tool
 
 
 def _env(monkeypatch, tmp_path, role="coach"):
+    monkeypatch.setenv("LAB_PLATFORM", "custom")
     monkeypatch.setenv("AGENT_ROLE", role)
     monkeypatch.setenv("HTB_DIR", str(tmp_path / "HTB"))
     monkeypatch.setenv("ADMIN_IDS", "1")
