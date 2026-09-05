@@ -59,7 +59,7 @@ MCP для агента на Kali: скопируйте `mcp_config.htb.example.
 2. `python -m lab_coach scan 10.129.X.Y` — одна цель, лимит 20/час.
 3. `python -m lab_coach explain data/reports/scan-N/scan-N.json` — разбор классов, что почитать.
 4. Флаги вводишь **вручную на сайте**. Дальнейшие шаги по машине — своими силами и головой: Lab Coach подсказывает классы и теорию, не прохождение.
-5. Docker-челленджи с **публичным IP** (не VPN): только если это твой заспавненный инстанс — впиши его IP в `SPAWNED_TARGET` в `.env` на время сессии, потом очисти. Пустой `SPAWNED_TARGET` = public запрещён всегда.
+5. Docker-челленджи с **публичным IP** (не VPN): см. `HTB-CHALLENGE-GUIDE.md` и `practice/.env.htb-challenge`. Только свой инстанс в `SPAWNED_TARGET` на время сессии, потом очистить. Lab Coach не добывает флаги и не jailbreak'ает устройство.
 
 ## Чек-лист «не навреди»
 

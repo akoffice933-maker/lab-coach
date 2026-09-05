@@ -30,7 +30,7 @@ python -m lab_coach doctor
   CIDR шире `/16` даёт предупреждение в `doctor`.
 - `ALLOW_LOOPBACK=false` по умолчанию (loopback — только для отладки на своей машине).
 - `SPAWNED_TARGET` — один явно заспавненный HTB docker (public). Пусто = public запрещён всегда.
-- `REQUIRE_VPN=true` для `thm`/`htb` — предупредит, если нет адресов tun/tap в `10/8`.
+- `REQUIRE_VPN=true` для `thm`/`htb` — **отказ скана**, если нет tun/tap с `10/8` (исключение: цель = `SPAWNED_TARGET`).
 - `NMAP_ENABLED=false` по умолчанию; если включён — только `-sV -T4 --top-ports`, без NSE exploit-скриптов. Nuclei всегда с `-ni` и `-etags exploit,intrusive,dos` (и в CLI, и в MCP).
 - `LLM_ENABLED=true` по умолчанию (OpenRouter/Ollama). `false` — только локальные шаблоны «Чем опасно», без сети к модели.
 - `MAX_SCANS_PER_HOUR=20` — одна цель на вызов, списки/CIDR/подсети запрещены.
@@ -122,6 +122,7 @@ LLM_PROVIDER=ollama OLLAMA_MODEL=qwen2.5:7b python -m lab_coach doctor
 
 - `LAB-VM-GUIDE.md` + `.env.metasploitable` — домашний полигон (Metasploitable 2 в host-only).
 - `HTB-MACHINE-GUIDE.md` + `.env.htb` + `htb-check.sh` + `mcp_config.htb.example.json` — Hack The Box (Kali VM, VPN внутри гостя, профиль `htb`, fail-closed без tun0).
+- `HTB-CHALLENGE-GUIDE.md` + `.env.htb-challenge` + `mcp_config.htb-challenge.example.json` — HTB Challenges (свой docker `IP:port` в `SPAWNED_TARGET`, VPN не нужен; без jailbreak и без `/flag.txt`).
 - `htb-box/` — учебная уязвимая VM PlanBox под план recon→foothold→privesc (только host-only).
 - `MAP-TO-MY-SITE.md` — как находки из lab превращать в действия на своём сайте без скана продакшена.
 - `MCP-AGENT-GUIDE.md` — подключение ИИ-агента (Claude/Cursor) и пример coach-сессии.

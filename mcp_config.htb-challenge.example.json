@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "lab-coach": {
+      "command": "python",
+      "args": ["-m", "lab_coach.mcp"],
+      "env": {
+        "LAB_PLATFORM": "htb",
+        "REQUIRE_VPN": "true",
+        "SPAWNED_TARGET": "203.0.113.50:30976",
+        "ALLOWED_LAB_CIDRS": "10.10.10.0/23,10.129.0.0/16",
+        "HTB_DIR": "/home/kali/HTB",
+        "ADMIN_IDS": "123456789",
+        "LLM_PROVIDER": "ollama",
+        "OLLAMA_MODEL": "qwen2.5:7b",
+        "LLM_ENABLED": "true",
+        "MCP_TRANSPORT": "stdio",
+        "NMAP_ENABLED": "false"
+      }
+    }
+  }
+}

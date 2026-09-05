@@ -1,5 +1,6 @@
 .env
 *.ovpn
+loot/flags.txt
 data/
 __pycache__/
 *.pyc
