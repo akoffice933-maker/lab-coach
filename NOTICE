@@ -1,0 +1,8 @@
+Lab Coach — код под MIT (см. LICENSE при публикации).
+
+Сторонние компоненты (свои лицензии/ToS):
+- Nuclei (ProjectDiscovery) — MIT. Не бандлится; ожидается в PATH.
+- nmap — NPSL. Опционален, выключен по умолчанию.
+- OpenRouter (https://openrouter.ai) — агрегатор LLM, свои Terms/Privacy; модель по умолчанию openai/gpt-4o-mini.
+- TryHackMe / Hack The Box / Standoff 365 / Hack This Site — свои ToS; продукт не помогает их обходить.
+- KaliGPT / PentestGPT — смежные OSS, НЕ зависимости (см. README § «рядом, не внутри»).

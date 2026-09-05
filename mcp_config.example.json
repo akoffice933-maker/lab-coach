@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "lab-coach": {
+      "command": "python",
+      "args": ["-m", "lab_coach.mcp"],
+      "env": {
+        "LAB_PLATFORM": "custom",
+        "ALLOWED_LAB_CIDRS": "192.168.56.0/24",
+        "HTB_DIR": "/home/kali/HTB",
+        "LLM_PROVIDER": "ollama",
+        "OLLAMA_MODEL": "qwen2.5:7b",
+        "LLM_ENABLED": "true",
+        "MCP_TRANSPORT": "stdio"
+      }
+    }
+  }
+}

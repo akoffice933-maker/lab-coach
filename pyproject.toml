@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lab-coach"
+version = "1.8.0"
+description = "Lab Coach — учебный defensive-ассистент для изолированного полигона (lab-only)"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic-settings>=2.0",
+  "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+tg = ["aiogram>=3.0"]
+
+[project.scripts]
+lab-coach = "lab_coach.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lab_coach*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

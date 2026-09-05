@@ -1,0 +1,41 @@
+{
+  "scan_id": "8",
+  "target": "https://example-prod.local",
+  "created_at": "2026-09-01T10:00:00Z",
+  "result": {
+    "findings": [
+      {
+        "scanner": "nuclei",
+        "severity": "high",
+        "title": "SQL Injection in login parameter",
+        "description": "The login parameter appears vulnerable to SQL injection.",
+        "location": "https://example-prod.local/login?id=1",
+        "impact": "Database access"
+      },
+      {
+        "scanner": "nuclei",
+        "severity": "medium",
+        "title": "Default login credentials (admin:admin)",
+        "description": "Application uses default credentials admin:admin with password admin123",
+        "location": "https://example-prod.local/admin",
+        "impact": "Unauthorized access"
+      },
+      {
+        "scanner": "nuclei",
+        "severity": "critical",
+        "title": "Auth bypass via session manipulation",
+        "description": "Session token can be forged to access admin panel without password",
+        "location": "https://example-prod.local/admin",
+        "impact": "Full compromise"
+      },
+      {
+        "scanner": "nmap",
+        "severity": "info",
+        "title": "Missing security header: Content-Security-Policy",
+        "description": "CSP header not set",
+        "location": "https://example-prod.local/",
+        "impact": ""
+      }
+    ]
+  }
+}

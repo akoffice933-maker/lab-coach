@@ -1,0 +1,13 @@
+# PlanBox: учебная уязвимая VM. ТОЛЬКО host-only, без моста и проброса портов.
+Vagrant.configure("2") do |config|
+  config.vm.box = "generic/ubuntu2204"
+  config.vm.hostname = "planbox"
+  # Полигон. НЕ менять на bridge, НЕ добавлять forwarded_port в интернет.
+  config.vm.network "private_network", ip: "192.168.56.110"
+  config.vm.provider "virtualbox" do |vb|
+    vb.name = "planbox-htb"
+    vb.memory = 2048
+    vb.cpus = 2
+  end
+  config.vm.provision "shell", path: "provision/box-build.sh"
+end
