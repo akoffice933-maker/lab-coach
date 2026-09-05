@@ -15,11 +15,11 @@ from .explain import finding_danger, refusal_for, summarize
 from .importer import extract_findings, load_scanbot_report, report_meta
 from .llm import resolve_endpoint
 from .platforms import capabilities
-from .policy import (AUTH_REFUSAL_RU, check_target_allowed, check_url_allowed,
-                     looks_like_auth_attack_request, normalize_scan_target)
+from .policy import (AUTH_REFUSAL_RU, check_target_allowed,
+                     looks_like_auth_attack_request)
 from .ratelimit import check_rate_limit
 from .reports import write_report
-from .scanners import run_nmap, run_nuclei
+from .scanners import run_lab_scanners
 
 DISCLAIMER = (
     "Lab Coach — только lab: сканируются лишь адреса вашей учебной сети (RFC1918/ULA/lab CIDR). "
@@ -102,39 +102,16 @@ def cmd_scan(args) -> int:
         print(f"Отказ: {verdict.user_message or 'цель не в lab-сети.'}")
         return 3
 
-    # F-POL-06: проверить редиректы для URL (HEAD без авторизации, не логинимся)
-    notes: list[str] = []
-    final_target = target
-    if verdict.kind == "url":
-        red = _check_redirects(target, s)
-        notes.extend(red["notes"])
-        if red["blocked"]:
-            log_event(s.database_url, user=user, action="scan_denied", target=_target_label(target),
-                      detail=f"redirect denied; {red['blocked_detail']}")
-            print(f"Отказ: {red['blocked']}")
-            return 3
-
-    # Сканеры
-    nuc = run_nuclei(final_target, s.nuclei_path, s.scan_timeout_seconds)
-    findings: list[dict] = list(nuc.get("findings", []))
-    if nuc["status"] == "skipped":
-        notes.append(nuc["note"])
-    elif nuc["status"] in ("timeout", "error"):
-        notes.append(nuc.get("note", "nuclei issue"))
-    if nuc.get("stderr_tail"):
-        pass  # stderr хранится в job, в консоль не печатаем целиком
-
-    if s.nmap_enabled:
-        host = _host_of(final_target)
-        if host:
-            nm = run_nmap(host, s.scan_timeout_seconds)
-            if nm["status"] == "skipped":
-                notes.append(nm["note"])
-            elif nm.get("raw_tail"):
-                findings.append({"scanner": "nmap", "severity": "info", "title": "Открытые порты/версии (nmap -sV)",
-                                 "description": nm["raw_tail"][-1500:], "location": host, "impact": ""})
-    else:
-        notes.append("nmap выключен (NMAP_ENABLED=false).")
+    job = run_lab_scanners(target, s)
+    if job.get("blocked"):
+        log_event(s.database_url, user=user, action="scan_denied", target=_target_label(target),
+                  detail=f"redirect denied; {job.get('blocked_detail', '')}")
+        print(f"Отказ: {job['blocked']}")
+        return 3
+    notes: list[str] = list(job.get("notes") or [])
+    findings: list[dict] = list(job.get("findings") or [])
+    final_target = job.get("final_target") or target
+    nuc_status = job.get("nuclei_status", "")
 
     dangers = [finding_danger(f) for f in findings]
     _base, _key, _model = resolve_endpoint(s)
@@ -145,57 +122,11 @@ def cmd_scan(args) -> int:
 
     rep = write_report(reports_dir=os.path.join("data", "reports"), target_label=_target_label(final_target),
                        findings=findings, dangers=dangers, summary_md=summary_md,
-                       summary_origin=origin, meta={"notes": notes, "nuclei_status": nuc["status"]})
+                       summary_origin=origin, meta={"notes": notes, "nuclei_status": nuc_status})
     log_event(s.database_url, user=user, action="scan_ok", target=_target_label(final_target),
               scan_id=f"scan-{rep['scan_id']}", detail=f"{len(findings)} findings; {origin}")
     print(f"Готово: scan-{rep['scan_id']} ({len(findings)} находок). Файлы: {rep['dir']}")
     return 0
-
-
-def _host_of(target: str) -> str:
-    t = target.strip()
-    if t.lower().startswith(("http://", "https://")):
-        try:
-            return urlsplit(t).hostname or ""
-        except ValueError:
-            return ""
-    return t.split("/")[0]
-
-
-def _check_redirects(url: str, s) -> dict:
-    """F-POL-06: HEAD с ручным обходом редиректов (макс. 5), каждый Location через LabPolicy."""
-    notes: list[str] = []
-    try:
-        import httpx  # type: ignore
-    except ImportError:
-        notes.append("Проверка редиректов пропущена (нет httpx).")
-        return {"notes": notes, "blocked": ""}
-    try:
-        import httpx
-        with httpx.Client(timeout=15, follow_redirects=False) as c:
-            cur = url
-            for _ in range(5):
-                r = c.head(cur)
-                if r.status_code not in (301, 302, 303, 307, 308):
-                    return {"notes": notes, "blocked": ""}
-                loc = r.headers.get("location", "")
-                if not loc:
-                    return {"notes": notes, "blocked": ""}
-                # относительный Location — ок, резолвим
-                nxt = str(r.headers.get("location"))
-                from urllib.parse import urljoin
-                nxt_abs = urljoin(cur, nxt)
-                v = check_url_allowed(nxt_abs, s)
-                if not v.allowed:
-                    return {"notes": notes,
-                            "blocked": "Редирект ведёт за пределы lab-сети — остановлено.",
-                            "blocked_detail": f"{v.reason}; {v.log_detail}"}
-                cur = nxt_abs
-            notes.append("Цепочка редиректов длиннее 5 — остановлено на lab-проверке.")
-            return {"notes": notes, "blocked": ""}
-    except Exception as e:
-        notes.append(f"Проверка редиректов не удалась ({type(e).__name__}) — скан продолжен по исходной lab-цели.")
-        return {"notes": notes, "blocked": ""}
 
 
 # ---------- explain / import ----------

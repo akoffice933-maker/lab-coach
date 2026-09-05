@@ -13,8 +13,9 @@ Lab Coach — преподаватель для полигона, не атак�
    (админка CMS / панель хостинга), вне продукта.
 4. **Утечка секретов** → ключ только из env, `mask_secrets` перед LLM, `doctor` без секретов,
    `.env` в `.gitignore`.
-5. **MCP «на весь мир»** → только `stdio`, `refuse_non_stdio` (`MCP_TRANSPORT!=stdio` / `FASTMCP_HOST` → SystemExit).
-6. **Путаница с прод-ботом** → отдельный репо/`.env`/`data`, другой Telegram-токен, запрет импорта `app.*` scan-bot.
+5. **MCP «на весь мир»** → только `stdio`, `refuse_non_stdio` (`MCP_TRANSPORT!=stdio` / `FASTMCP_HOST` → SystemExit). Действия scan/explain/set_platform/verify_fix — fail-closed без `ADMIN_IDS` (как CLI).
+6. **Nuclei OOB/exploit** → `-ni` (без interactsh) и `-etags exploit,intrusive,dos`.
+7. **Путаница с прод-ботом** → отдельный репо/`.env`/`data`, другой Telegram-токен, запрет импорта `app.*` scan-bot.
 
 ## Правила оператора (дисклеймер)
 

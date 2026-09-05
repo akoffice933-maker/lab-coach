@@ -6,9 +6,10 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import re
 import socket
 from dataclasses import dataclass
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 from .config import METADATA_HOSTNAMES, Settings
 
@@ -295,6 +296,38 @@ def check_url_allowed(url: str, s: Settings) -> PolicyResult:
 def check_redirect_allowed(url: str, s: Settings) -> PolicyResult:
     """F-POL-06: редирект на non-lab URL/IP → стоп. Проверять каждый Location."""
     return check_url_allowed(url, s)
+
+
+def check_redirect_chain(url: str, s: Settings, *, max_hops: int = 5) -> dict:
+    """HEAD без follow: каждый Location через LabPolicy. Не логинимся."""
+    notes: list[str] = []
+    try:
+        import httpx  # type: ignore
+    except ImportError:
+        notes.append("Проверка редиректов пропущена (нет httpx).")
+        return {"notes": notes, "blocked": "", "blocked_detail": ""}
+    try:
+        with httpx.Client(timeout=15, follow_redirects=False) as c:
+            cur = url
+            for _ in range(max_hops):
+                r = c.head(cur)
+                if r.status_code not in (301, 302, 303, 307, 308):
+                    return {"notes": notes, "blocked": "", "blocked_detail": ""}
+                loc = r.headers.get("location", "")
+                if not loc:
+                    return {"notes": notes, "blocked": "", "blocked_detail": ""}
+                nxt_abs = urljoin(cur, loc)
+                v = check_url_allowed(nxt_abs, s)
+                if not v.allowed:
+                    return {"notes": notes,
+                            "blocked": "Редирект ведёт за пределы lab-сети — остановлено.",
+                            "blocked_detail": f"{v.reason}; {v.log_detail}"}
+                cur = nxt_abs
+            notes.append("Цепочка редиректов длиннее 5 — остановлено на lab-проверке.")
+            return {"notes": notes, "blocked": "", "blocked_detail": ""}
+    except Exception as e:
+        notes.append(f"Проверка редиректов не удалась ({type(e).__name__}) — скан продолжен по исходной lab-цели.")
+        return {"notes": notes, "blocked": "", "blocked_detail": ""}
 
 
 AUTH_REQUEST_HINTS = (

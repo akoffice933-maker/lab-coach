@@ -8,6 +8,9 @@ import subprocess
 
 log = logging.getLogger("lab_coach.scanners")
 
+# Nuclei: без OOB (interactsh) и без exploit/intrusive/dos шаблонов.
+NUCLEI_EXCLUDE_TAGS = "exploit,intrusive,dos"
+
 
 def tool_available(binary: str) -> bool:
     return shutil.which(binary) is not None
@@ -19,8 +22,9 @@ def run_nuclei(target: str, nuclei_path: str = "nuclei", timeout: int = 900) -> 
     if not tool_available(binary):
         return {"scanner": "nuclei", "status": "skipped",
                 "note": f"Сканер {binary!r} не найден в PATH — шаг пропущен, job продолжается."}
-    # Только -u <цель>, JSON-вывод; никаких exploit-флагов.
-    argv = [binary, "-u", target, "-jsonl", "-silent"]
+    # Только -u <цель>, JSON-вывод; без interactsh и exploit/intrusive/dos.
+    argv = [binary, "-u", target, "-jsonl", "-silent",
+            "-ni", "-etags", NUCLEI_EXCLUDE_TAGS]
     try:
         p = subprocess.run(argv, shell=False, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -64,3 +68,54 @@ def run_nmap(target_host: str, timeout: int = 900) -> dict:
     except Exception as e:
         return {"scanner": "nmap", "status": "error", "note": f"nmap не запустился: {type(e).__name__}"}
     return {"scanner": "nmap", "status": "ok", "raw_tail": (p.stdout or "")[-4000:]}
+
+
+def run_lab_scanners(target: str, s) -> dict:
+    """Nuclei + опциональный nmap по уже разрешённой lab-цели."""
+    from urllib.parse import urlsplit
+    from .policy import check_redirect_chain, normalize_scan_target
+
+    notes: list[str] = []
+    final_target = normalize_scan_target(target)
+    kind = "url" if final_target.lower().startswith(("http://", "https://")) else "ip"
+    if kind == "url":
+        red = check_redirect_chain(final_target, s)
+        notes.extend(red.get("notes") or [])
+        if red.get("blocked"):
+            return {"blocked": red["blocked"], "blocked_detail": red.get("blocked_detail", ""),
+                    "notes": notes, "findings": [], "nuclei_status": "denied"}
+
+    nuc = run_nuclei(final_target, s.nuclei_path, s.scan_timeout_seconds)
+    findings: list[dict] = list(nuc.get("findings", []))
+    if nuc["status"] == "skipped":
+        notes.append(nuc["note"])
+    elif nuc["status"] in ("timeout", "error"):
+        notes.append(nuc.get("note", "nuclei issue"))
+
+    if s.nmap_enabled:
+        host = ""
+        t = final_target.strip()
+        if t.lower().startswith(("http://", "https://")):
+            try:
+                host = urlsplit(t).hostname or ""
+            except ValueError:
+                host = ""
+        else:
+            host = t.split("/")[0]
+            if host.count(":") == 1 and host.split(":")[1].isdigit():
+                host = host.split(":")[0]
+        if host:
+            nm = run_nmap(host, s.scan_timeout_seconds)
+            if nm["status"] == "skipped":
+                notes.append(nm["note"])
+            elif nm.get("raw_tail"):
+                findings.append({"scanner": "nmap", "severity": "info",
+                                 "title": "Открытые порты/версии (nmap -sV)",
+                                 "description": nm["raw_tail"][-1500:],
+                                 "location": host, "impact": ""})
+    else:
+        notes.append("nmap выключен (NMAP_ENABLED=false).")
+
+    return {"blocked": "", "blocked_detail": "", "notes": notes,
+            "findings": findings, "nuclei_status": nuc["status"],
+            "final_target": final_target}

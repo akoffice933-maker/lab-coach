@@ -95,6 +95,19 @@ def test_hackthissite_scan_denied():
     assert not check_target_allowed("http://192.168.56.10/", s).allowed
 
 
+def test_host_port_lab_allowed():
+    s = lab_settings()
+    r = check_target_allowed("192.168.56.10:8080", s)
+    assert r.allowed, r
+
+
+def test_ipv6_bracket_split():
+    from lab_coach.policy import split_host_port
+    host, port = split_host_port("[fd00::1]:8080")
+    assert host == "fd00::1"
+    assert port == 8080
+
+
 def test_htb_spawned_target_exception():
     s = lab_settings(lab_platform="htb", spawned_target="203.0.113.10")
     r = check_ip_allowed("203.0.113.10", s)

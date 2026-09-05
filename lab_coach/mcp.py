@@ -22,13 +22,13 @@ from .coach import log_note as _log_note
 from .coach import read_session_file as _read_file
 from .coach import session_status as _session_status
 from .coach import verify_fix as _verify_fix
-from .config import VALID_PLATFORMS, load_settings
+from .config import VALID_PLATFORMS, load_settings, require_admin_configured, write_runtime_state
 from .explain import finding_danger, refusal_for, summarize
 from .importer import extract_findings, load_scanbot_report, report_meta
 from .llm import chat_completion as _chat_completion
 from .llm import llm_configured, resolve_endpoint
 from .platforms import capabilities
-from .policy import AUTH_REFUSAL_RU, looks_like_auth_attack_request, check_target_allowed, normalize_scan_target
+from .policy import AUTH_REFUSAL_RU, looks_like_auth_attack_request, check_target_allowed
 from .ratelimit import check_rate_limit
 from .reports import write_report
 
@@ -50,7 +50,7 @@ def refuse_non_stdio() -> None:
 TOOL_DEFS = [
     {"name": "get_lab_status", "description": "Статус lab: платформа, CIDR, VPN-guess, сканеры (без секретов).",
      "inputSchema": {"type": "object", "properties": {}}},
-    {"name": "set_platform", "description": "Сменить профиль площадки thm|htb|standoff365|hackthissite|vulnhub|metasploitable|custom.",
+    {"name": "set_platform", "description": "Сменить профиль площадки. Пишет env процесса и data/runtime-state.json (переживает рестарт MCP).",
      "inputSchema": {"type": "object", "properties": {"platform": {"type": "string"}}, "required": ["platform"]}},
     {"name": "scan_lab_target", "description": "Сканировать ОДНУ lab-цель (IP/URL). Списки и подсети запрещены.",
      "inputSchema": {"type": "object", "properties": {"target": {"type": "string"}}, "required": ["target"]}},
@@ -81,6 +81,11 @@ TOOL_DEFS = [
 ]
 
 # Матрица ролей Red vs Blue (coach = всё). Платформу задаёт человек в env.
+ADMIN_TOOLS = {
+    "set_platform", "scan_lab_target", "explain_mission", "explain_report",
+    "import_scanbot_report", "init_session", "verify_fix",
+}
+
 ROLE_TOOLS: dict[str, set[str] | None] = {
     "coach": None,
     "red": {"get_lab_status", "scan_lab_target", "explain_report",
@@ -119,10 +124,12 @@ def tool_set_platform(args: dict) -> dict:
     if p not in VALID_PLATFORMS:
         return _err(f"неизвестный профиль {p!r}. Разрешены: {', '.join(VALID_PLATFORMS)}")
     os.environ["LAB_PLATFORM"] = p
+    state_path = write_runtime_state(lab_platform=p)
     s2 = load_settings()
     init_db(s2.database_url)
-    log_event(s2.database_url, user="mcp", action="set_platform", detail=f"platform -> {p}; cidrs={s2.effective_cidrs}")
-    return _ok({"platform": p, "cidrs": s2.effective_cidrs})
+    log_event(s2.database_url, user="mcp", action="set_platform",
+              detail=f"platform -> {p}; cidrs={s2.effective_cidrs}; state={state_path}")
+    return _ok({"platform": p, "cidrs": s2.effective_cidrs, "persisted": state_path})
 
 
 def tool_scan_lab_target(args: dict) -> dict:
@@ -148,12 +155,14 @@ def tool_scan_lab_target(args: dict) -> dict:
         log_event(s.database_url, user="mcp", action="scan_denied", target=target[:200],
                   detail=f"{verdict.reason}; {verdict.log_detail}")
         return _err(verdict.user_message or "цель не в lab-сети.")
-    from .scanners import run_nuclei
-    nuc = run_nuclei(normalize_scan_target(target), s.nuclei_path, s.scan_timeout_seconds)
-    findings = list(nuc.get("findings", []))
-    notes = []
-    if nuc["status"] == "skipped":
-        notes.append(nuc["note"])
+    from .scanners import run_lab_scanners
+    job = run_lab_scanners(target, s)
+    if job.get("blocked"):
+        log_event(s.database_url, user="mcp", action="scan_denied", target=target[:200],
+                  detail=f"redirect denied; {job.get('blocked_detail', '')}")
+        return _err(job["blocked"])
+    findings = list(job.get("findings") or [])
+    notes = list(job.get("notes") or [])
     dangers = [finding_danger(f) for f in findings]
     _base, _key, _model = resolve_endpoint(s)
     summary_md, origin = summarize(findings, "lab", llm_enabled=s.llm_enabled,
@@ -319,6 +328,11 @@ def _dispatch_tool(name: str, args: dict) -> dict:
     fn = TOOLS.get(name)
     if not fn:
         return _err(f"неизвестный tool {name!r}. Разрешены: {', '.join(sorted(TOOLS))}")
+    if name in ADMIN_TOOLS:
+        try:
+            require_admin_configured(load_settings())
+        except SystemExit as e:
+            return _err(str(e))
     ok, role = role_allowed(name)
     if not ok:
         s = load_settings()

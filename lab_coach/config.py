@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 import os
 from dataclasses import dataclass, field
 
@@ -113,10 +114,49 @@ class Settings:
         return raw
 
 
+def runtime_state_path() -> str:
+    return _getenv("LAB_COACH_STATE", "./data/runtime-state.json") or "./data/runtime-state.json"
+
+
+def read_runtime_state() -> dict:
+    path = runtime_state_path()
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def write_runtime_state(**kw) -> str:
+    """Сохранить ключи runtime (lab_platform) — переживает рестарт MCP."""
+    path = runtime_state_path()
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    data = read_runtime_state()
+    for k, v in kw.items():
+        if v is None:
+            data.pop(k, None)
+        else:
+            data[k] = v
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    os.replace(tmp, path)
+    return path
+
+
 def load_settings() -> Settings:
     admin_raw = _getenv("ADMIN_IDS", "").strip()
     admin_ids = [a.strip() for a in admin_raw.replace(";", ",").split(",") if a.strip()]
-    platform = _getenv("LAB_PLATFORM", "custom").strip().lower() or "custom"
+    state = read_runtime_state()
+    # runtime-state (set_platform) важнее env, иначе mcp.json затирает профиль при рестарте.
+    if state.get("lab_platform"):
+        platform = str(state.get("lab_platform")).strip().lower() or "custom"
+    else:
+        platform = _getenv("LAB_PLATFORM", "custom").strip().lower() or "custom"
     if platform not in VALID_PLATFORMS:
         platform = "custom"
     provider = _getenv("LLM_PROVIDER", "openrouter").strip().lower() or "openrouter"

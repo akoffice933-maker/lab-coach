@@ -60,3 +60,49 @@ def test_mcp_forbidden_tool():
     assert r.get("isError")
     r2 = _dispatch_tool("run_kaligpt", {})
     assert r2.get("isError")
+
+
+def test_mcp_scan_fail_closed_without_admin(monkeypatch):
+    from lab_coach.mcp import _dispatch_tool
+    monkeypatch.setenv("ADMIN_IDS", "")
+    r = _dispatch_tool("scan_lab_target", {"target": "192.168.56.10"})
+    assert r.get("isError")
+    assert "ADMIN_IDS" in r["content"][0]["text"]
+
+
+def test_mcp_status_ok_without_admin(monkeypatch):
+    from lab_coach.mcp import _dispatch_tool
+    monkeypatch.setenv("ADMIN_IDS", "")
+    r = _dispatch_tool("get_lab_status", {})
+    assert not r.get("isError")
+
+
+def test_nuclei_safe_argv(monkeypatch):
+    import lab_coach.scanners as sc
+    captured = {}
+
+    def fake_run(argv, **_kw):
+        captured["argv"] = argv
+
+        class P:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return P()
+
+    monkeypatch.setattr(sc.shutil, "which", lambda _b: "/usr/bin/nuclei")
+    monkeypatch.setattr(sc.subprocess, "run", fake_run)
+    sc.run_nuclei("http://192.168.56.10")
+    assert "-ni" in captured["argv"]
+    assert "-etags" in captured["argv"]
+    assert "exploit,intrusive,dos" in captured["argv"]
+
+
+def test_runtime_state_overrides_env(monkeypatch, tmp_path):
+    from lab_coach.config import load_settings, write_runtime_state
+    st = tmp_path / "runtime-state.json"
+    monkeypatch.setenv("LAB_COACH_STATE", str(st))
+    monkeypatch.setenv("LAB_PLATFORM", "custom")
+    write_runtime_state(lab_platform="htb")
+    assert load_settings().lab_platform == "htb"

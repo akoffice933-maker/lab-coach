@@ -1,6 +1,6 @@
 # Lab Coach
 
-Учебный defensive-ассистент для изолированного полигона. Версия ТЗ 1.4 (`lab-coach`).
+Учебный defensive-ассистент для изолированного полигона. Версия пакета **1.8.0** (ТЗ 1.4 + Ollama/MCP/роли).
 
 **Только lab.** Сканируются лишь адреса вашей учебной сети (RFC1918 / ULA / явно заданные lab CIDR).
 Публичные IP отклоняются. Эксплойты не запускаются. Продукт не логинится и не меняет пароли.
@@ -25,14 +25,14 @@ python -m lab_coach doctor
 
 См. `.env.example`. Главное:
 
-- `LAB_PLATFORM=thm|htb|standoff365|hackthissite|vulnhub|metasploitable|custom`
+- `LAB_PLATFORM=thm|htb|ctf|standoff365|hackthissite|vulnhub|metasploitable|custom`
 - `ALLOWED_LAB_CIDRS` — **сужайте, не расширяйте**: для VirtualBox host-only например `192.168.56.0/24`.
   CIDR шире `/16` даёт предупреждение в `doctor`.
 - `ALLOW_LOOPBACK=false` по умолчанию (loopback — только для отладки на своей машине).
 - `SPAWNED_TARGET` — один явно заспавненный HTB docker (public). Пусто = public запрещён всегда.
 - `REQUIRE_VPN=true` для `thm`/`htb` — предупредит, если нет адресов tun/tap в `10/8`.
-- `NMAP_ENABLED=false` по умолчанию; если включён — только `-sV -T4 --top-ports`, без NSE exploit-скриптов.
-- `LLM_ENABLED=false` — работа без сети к модели (локальные шаблоны «Чем опасно»).
+- `NMAP_ENABLED=false` по умолчанию; если включён — только `-sV -T4 --top-ports`, без NSE exploit-скриптов. Nuclei всегда с `-ni` и `-etags exploit,intrusive,dos` (и в CLI, и в MCP).
+- `LLM_ENABLED=true` по умолчанию (OpenRouter/Ollama). `false` — только локальные шаблоны «Чем опасно», без сети к модели.
 - `MAX_SCANS_PER_HOUR=20` — одна цель на вызов, списки/CIDR/подсети запрещены.
 
 ## Использование
@@ -66,7 +66,7 @@ python -m lab_coach login foo           # нет такого действия +
 } } }
 ```
 
-См. `mcp_config.example.json` и `practice/MCP-AGENT-GUIDE.md`. Tools (14):
+См. `mcp_config.example.json` и `practice/MCP-AGENT-GUIDE.md`. Tools (15):
 скан-слой — `get_lab_status`, `set_platform`, `scan_lab_target`,
 `explain_mission`, `explain_report`, `import_scanbot_report`;
 coach-слой методологии 0–6 — `init_session`, `session_status`, `log_note`,
