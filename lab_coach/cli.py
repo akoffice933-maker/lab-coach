@@ -194,6 +194,57 @@ def cmd_doctor(_args) -> int:
     return 0
 
 
+def cmd_playbook(args) -> int:
+    from .coach import CTF_PLAYBOOKS, get_ctf_playbook
+    cat = (args.category or "").strip()
+    if not cat or cat in ("list", "--list"):
+        print("Категории:", ", ".join(sorted(CTF_PLAYBOOKS)))
+        return 0
+    r = get_ctf_playbook(cat)
+    print(f"# {r.get('category')}\n")
+    print(r.get("playbook", ""))
+    print("\n" + r.get("rules", ""))
+    return 0
+
+
+def cmd_plan(args) -> int:
+    from .coach import get_plan_step
+    r = get_plan_step(args.step, args.target)
+    if not r.get("ok"):
+        print("Отказ:", r.get("error"), file=sys.stderr)
+        return 2
+    print(f"# Шаг {r['step']}: {r['title']}\n")
+    print(r["guide"])
+    return 0
+
+
+def cmd_session_init(args) -> int:
+    from .coach import init_session
+    s = load_settings()
+    try:
+        require_admin_configured(s)
+    except SystemExit as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    r = init_session(args.machine, args.target)
+    if not r.get("ok"):
+        print("Отказ:", r.get("error"))
+        return 3
+    print(json.dumps(r, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_class(args) -> int:
+    from .explain import local_danger, refusal_for
+    text = args.text.strip()
+    ref = refusal_for(text)
+    if ref:
+        print(ref)
+        return 3
+    print(local_danger(text))
+    return 0
+
+
 def cmd_auth_denied(args) -> int:
     s = load_settings()
     _setup_logging(s.log_level)
@@ -220,6 +271,20 @@ def build_parser() -> argparse.ArgumentParser:
     im.set_defaults(func=cmd_explain)
     d = sub.add_parser("doctor", help="Проверка capabilities без секретов")
     d.set_defaults(func=cmd_doctor)
+    pb = sub.add_parser("playbook", help="Плейбук CTF-категории (без payload)")
+    pb.add_argument("category", nargs="?", default="list", help="web|reversing|warmup|crypto|… или list")
+    pb.set_defaults(func=cmd_playbook)
+    pl = sub.add_parser("plan", help="Шаг методологии 0-6 (CTF без ping, если профиль ctf)")
+    pl.add_argument("step", help="0..6")
+    pl.add_argument("target", nargs="?", default="", help="IP:port или offline")
+    pl.set_defaults(func=cmd_plan)
+    se = sub.add_parser("session-init", help="Создать каталог сессии (цель через LabPolicy)")
+    se.add_argument("machine", help="slug сессии, латиница")
+    se.add_argument("target", help="IP:port из карточки или offline")
+    se.set_defaults(func=cmd_session_init)
+    cl = sub.add_parser("class", help="Класс дыры по короткому описанию (теория)")
+    cl.add_argument("text", help="например: date format / xss / sqli")
+    cl.set_defaults(func=cmd_class)
     # Запрещённые действия: явный отказ + audit (приёмка §15)
     for name in ("login", "set-password", "set_password", "change-password",
                  "change_password", "reset-password", "reset_password", "auth-bypass"):

@@ -338,6 +338,10 @@ DEFENSE_KB: list[tuple[tuple[str, ...], str, list[str], str]] = [
     (("header", "заголовок", "csp", "clickjacking", "x-frame"), "Заголовки",
      ["CSP", "X-Frame-Options/frame-ancestors", "Referrer-Policy", "X-Content-Type-Options"],
      "Заголовки видны в ответе сервера."),
+    (("command injection", "os command", "cmd injection", "date format"), "Инъекция в команду ОС",
+     ["Не склеивать ввод с shell", "Allowlist формата даты/аргументов", "escapeshellarg / argv без shell",
+      "Минимальные права процесса"],
+     "В lab: пользовательский формат не уходит в date(1)/system()."),
 ]
 
 GENERIC_DEFENSE = (["Определить класс находки", "Закрыть по документации вендора/CMS",

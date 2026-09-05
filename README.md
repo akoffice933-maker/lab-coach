@@ -24,10 +24,13 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env   # впишите ADMIN_IDS=<ваш Telegram numeric id>
 python -m lab_coach doctor
+python -m lab_coach playbook reversing
+python -m lab_coach plan 0 offline
+python -m lab_coach class "date format"
+python -m lab_coach session-init mytask offline
 ```
 
-`doctor` — единственная команда, работающая без `ADMIN_IDS` (capabilities без секретов).
-`scan` / `explain` без `ADMIN_IDS` не стартуют (fail-closed).
+`doctor` / `playbook` / `plan` / `class` — без сети к цели. `scan` / `session-init` без `ADMIN_IDS` не стартуют (fail-closed).
 
 ## Конфигурация
 

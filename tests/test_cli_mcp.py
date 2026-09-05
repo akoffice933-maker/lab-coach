@@ -53,6 +53,27 @@ def test_mcp_refuses_non_stdio():
         os.environ["MCP_TRANSPORT"] = "stdio"
 
 
+def test_playbook_cli():
+    p = run_cli("playbook", "reversing")
+    assert p.returncode == 0, p.stderr
+    assert "Reversing" in p.stdout or "хосте" in p.stdout.lower() or "бинарь" in p.stdout.lower()
+
+
+def test_class_cli():
+    p = run_cli("class", "date format command injection")
+    assert p.returncode == 0, p.stderr + p.stdout
+    assert "команд" in p.stdout.lower()
+
+
+def test_plan_cli_ctf():
+    p = run_cli("plan", "0", "offline", env_extra={
+        "LAB_PLATFORM": "ctf", "SPAWNED_TARGET": "",
+        "LAB_COACH_STATE": os.path.join(os.path.dirname(__file__), "_no_runtime_state.json"),
+    })
+    assert p.returncode == 0, p.stderr
+    assert "Ping не" in p.stdout or "ping не" in p.stdout.lower()
+
+
 def test_mcp_forbidden_tool():
     from lab_coach.mcp import _dispatch_tool
     os.environ.setdefault("ADMIN_IDS", "1")
