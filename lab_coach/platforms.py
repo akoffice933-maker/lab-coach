@@ -1,9 +1,11 @@
 """Профили площадок (§10.4, F-PLT) + VPN-guess + capabilities для doctor/MCP."""
 from __future__ import annotations
 
+import fcntl
 import ipaddress
-import shutil
+import os
 import socket
+import struct
 
 from .config import Settings
 from .llm import ollama_probe, resolve_endpoint
@@ -21,8 +23,35 @@ PLATFORM_HINTS = {
 }
 
 
-def _local_ips() -> list[str]:
+def _iface_ipv4(name: str) -> str | None:
+    """SIOCGIFADDR — адрес tun0 на Kali/Linux."""
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        packed = struct.pack("256s", name.encode("ascii", "ignore")[:15])
+        ip = socket.inet_ntoa(fcntl.ioctl(sock.fileno(), 0x8915, packed)[20:24])
+        sock.close()
+        return ip
+    except OSError:
+        return None
+
+
+def _tun_ips() -> list[str]:
     out: list[str] = []
+    try:
+        names = os.listdir("/sys/class/net")
+    except OSError:
+        names = []
+    for name in names:
+        if not name.startswith(("tun", "tap", "wg")):
+            continue
+        ip = _iface_ipv4(name)
+        if ip and ip not in out:
+            out.append(ip)
+    return out
+
+
+def _local_ips() -> list[str]:
+    out: list[str] = list(_tun_ips())
     try:
         for info in socket.getaddrinfo(socket.gethostname(), None):
             ip = info[4][0]
@@ -44,17 +73,43 @@ def _local_ips() -> list[str]:
 
 
 def vpn_guess() -> dict:
-    """Эвристика: есть ли локальный адрес в 10/8 (tun/tap THM/HTB)."""
+    """Эвристика: tun/tap/wg с 10/8 (HTB tun0 обычно 10.10.14.x)."""
     ips = _local_ips()
+    tun_ips = _tun_ips()
+    net10 = ipaddress.ip_network("10.0.0.0/8")
     tun_like = False
-    for ip in ips:
+    for ip in tun_ips or ips:
         try:
             a = ipaddress.ip_address(ip)
-            if a.version == 4 and a in ipaddress.ip_network("10.0.0.0/8"):
+            if a.version == 4 and a in net10:
                 tun_like = True
+                break
         except ValueError:
             continue
-    return {"likely_vpn": tun_like, "local_ips_count": len(ips)}
+    return {"likely_vpn": tun_like, "local_ips_count": len(ips), "tun_ips_count": len(tun_ips)}
+
+
+VPN_PLATFORMS = ("thm", "htb")
+VPN_REFUSAL_RU = (
+    "Отказ: REQUIRE_VPN=true, а tun/tap с адресом 10/8 не найден. "
+    "Подключите .ovpn площадки (sudo openvpn …) и повторите. "
+    "Для публичного docker-челленджа задайте SPAWNED_TARGET."
+)
+
+
+def vpn_required_ok(s: Settings, target: str = "") -> tuple[bool, str]:
+    """Fail-closed для thm/htb, кроме цели = SPAWNED_TARGET (challenge без VPN)."""
+    if s.lab_platform not in VPN_PLATFORMS or not s.require_vpn:
+        return True, ""
+    spawned = (s.spawned_target or "").strip().lower()
+    t = (target or "").strip().lower()
+    if spawned and t:
+        from .policy import split_host_port
+        if split_host_port(t)[0] == split_host_port(spawned)[0]:
+            return True, ""
+    if vpn_guess().get("likely_vpn"):
+        return True, ""
+    return False, VPN_REFUSAL_RU
 
 
 def capabilities(s: Settings) -> dict:
@@ -82,6 +137,7 @@ def capabilities(s: Settings) -> dict:
         "cidr_too_wide_warn": wide_warn,
         "vpn_guess": vpn,
         "require_vpn": s.require_vpn,
+        "vpn_required_ok": vpn_required_ok(s)[0],
         "nuclei_available": tool_available(s.nuclei_path or "nuclei"),
         "nmap_available": tool_available("nmap") and s.nmap_enabled,
         "nmap_enabled": s.nmap_enabled,

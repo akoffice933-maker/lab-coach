@@ -88,12 +88,13 @@ def cmd_scan(args) -> int:
         print(f"Отказ: лимит {s.max_scans_per_hour} сканов/час исчерпан. Подождите.")
         return 3
 
-    # REQUIRE_VPN предупреждение (F-PLT-03)
-    if s.lab_platform in ("thm", "htb") and s.require_vpn:
-        from .platforms import vpn_guess
-        if not vpn_guess()["likely_vpn"]:
-            print("Предупреждение: профиль {} а локальных адресов tun/tap в 10/8 нет — "
-                  "похоже, VPN выключен. Подключите .ovpn, иначе скан уйдёт в пустоту.".format(s.lab_platform))
+    from .platforms import vpn_required_ok
+    vpn_ok, vpn_msg = vpn_required_ok(s, target)
+    if not vpn_ok:
+        log_event(s.database_url, user=user, action="scan_denied", target=target[:200],
+                  detail="vpn required but not detected")
+        print(vpn_msg)
+        return 3
 
     verdict = check_target_allowed(target, s)
     if not verdict.allowed:

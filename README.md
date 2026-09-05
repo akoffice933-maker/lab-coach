@@ -121,7 +121,7 @@ LLM_PROVIDER=ollama OLLAMA_MODEL=qwen2.5:7b python -m lab_coach doctor
 ## Практика (`practice/`)
 
 - `LAB-VM-GUIDE.md` + `.env.metasploitable` — домашний полигон (Metasploitable 2 в host-only).
-- `HTB-MACHINE-GUIDE.md` + `.env.htb` + `htb-check.sh` — выделенная машина под Hack The Box (Kali VM, VPN внутри гостя, профиль `htb`).
+- `HTB-MACHINE-GUIDE.md` + `.env.htb` + `htb-check.sh` + `mcp_config.htb.example.json` — Hack The Box (Kali VM, VPN внутри гостя, профиль `htb`, fail-closed без tun0).
 - `htb-box/` — учебная уязвимая VM PlanBox под план recon→foothold→privesc (только host-only).
 - `MAP-TO-MY-SITE.md` — как находки из lab превращать в действия на своём сайте без скана продакшена.
 - `MCP-AGENT-GUIDE.md` — подключение ИИ-агента (Claude/Cursor) и пример coach-сессии.

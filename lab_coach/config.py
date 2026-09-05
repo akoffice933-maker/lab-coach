@@ -35,6 +35,33 @@ METADATA_HOSTNAMES = {
 }
 
 
+def load_dotenv(path: str | None = None) -> str:
+    """Прочитать KEY=VAL из .env в os.environ, не перезаписывая уже заданное.
+    Без python-dotenv: иначе `cp practice/.env.htb .env` не работал бы для CLI/MCP."""
+    p = path or os.environ.get("LAB_COACH_ENV") or ".env"
+    if not p or not os.path.isfile(p):
+        return ""
+    try:
+        with open(p, encoding="utf-8") as f:
+            lines = f.readlines()
+    except OSError:
+        return ""
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.startswith("export "):
+            line = line[7:].strip()
+        key, _, val = line.partition("=")
+        key = key.strip()
+        val = val.strip()
+        if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+            val = val[1:-1]
+        if key and key not in os.environ:
+            os.environ[key] = val
+    return p
+
+
 def _getenv(name: str, default: str = "") -> str:
     v = os.environ.get(name, default)
     return v if v is not None else default
@@ -149,6 +176,7 @@ def write_runtime_state(**kw) -> str:
 
 
 def load_settings() -> Settings:
+    load_dotenv()
     admin_raw = _getenv("ADMIN_IDS", "").strip()
     admin_ids = [a.strip() for a in admin_raw.replace(";", ",").split(",") if a.strip()]
     state = read_runtime_state()

@@ -150,6 +150,12 @@ def tool_scan_lab_target(args: dict) -> dict:
     ok_rate, used = check_rate_limit(s.database_url, s.max_scans_per_hour)
     if not ok_rate:
         return _err(f"лимит {s.max_scans_per_hour} сканов/час исчерпан ({used}).")
+    from .platforms import vpn_required_ok
+    vpn_ok, vpn_msg = vpn_required_ok(s, target)
+    if not vpn_ok:
+        log_event(s.database_url, user="mcp", action="scan_denied", target=target[:200],
+                  detail="vpn required but not detected")
+        return _err(vpn_msg)
     verdict = check_target_allowed(target, s)
     if not verdict.allowed:
         log_event(s.database_url, user="mcp", action="scan_denied", target=target[:200],

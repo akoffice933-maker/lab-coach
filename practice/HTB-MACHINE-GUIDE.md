@@ -31,9 +31,14 @@
 
 ```bash
 cd lab-coach
-cp practice/.env.htb .env      # впиши свой ADMIN_IDS
-python -m lab_coach doctor     # ждём: platform htb, vpn likely_vpn=true
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+cp practice/.env.htb .env      # впиши свой ADMIN_IDS (не оставляй пустым)
+./practice/htb-check.sh        # tun0 10.x, openvpn, doctor
+python -m lab_coach doctor     # platform=htb, vpn_required_ok=true, likely_vpn=true
 ```
+
+CLI и MCP **сами читают `.env`** (не нужно `export $(cat .env)`).
 
 `.env.htb` уже содержит:
 
@@ -42,6 +47,11 @@ LAB_PLATFORM=htb
 REQUIRE_VPN=true
 ALLOWED_LAB_CIDRS=10.10.10.0/23,10.129.0.0/16
 ```
+
+`REQUIRE_VPN=true` — **отказ скана**, если нет tun/tap с 10/8 (не только предупреждение).
+Исключение: цель = `SPAWNED_TARGET` (challenge/Academy docker с публичным IP:port, VPN не нужен).
+
+MCP для агента на Kali: скопируйте `mcp_config.htb.example.json` в конфиг Claude/Cursor, подставьте `ADMIN_IDS` и `HTB_DIR`.
 
 ## Цикл сессии
 
