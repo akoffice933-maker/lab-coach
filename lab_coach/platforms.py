@@ -1,11 +1,15 @@
 """Профили площадок (§10.4, F-PLT) + VPN-guess + capabilities для doctor/MCP."""
 from __future__ import annotations
 
-import fcntl
 import ipaddress
 import os
 import socket
 import struct
+
+try:
+    import fcntl  # Linux/Unix: ioctl для tun-интерфейсов (Kali/HTB)
+except ImportError:  # Windows: VPN-guess работает через _local_ips fallback
+    fcntl = None  # type: ignore[assignment]
 
 from .config import Settings
 from .llm import ollama_probe, resolve_endpoint
@@ -24,7 +28,9 @@ PLATFORM_HINTS = {
 
 
 def _iface_ipv4(name: str) -> str | None:
-    """SIOCGIFADDR — адрес tun0 на Kali/Linux."""
+    """SIOCGIFADDR — адрес tun0 на Kali/Linux. На Windows — None."""
+    if fcntl is None:
+        return None
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         packed = struct.pack("256s", name.encode("ascii", "ignore")[:15])
