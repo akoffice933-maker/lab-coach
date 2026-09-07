@@ -226,7 +226,7 @@ def cmd_session_init(args) -> int:
     except SystemExit as e:
         print(str(e), file=sys.stderr)
         return 2
-    r = init_session(args.machine, args.target)
+    r = init_session(args.machine, args.target, category=getattr(args, "category", "") or None)
     if not r.get("ok"):
         print("Отказ:", r.get("error"))
         return 3
@@ -247,7 +247,7 @@ def cmd_class(args) -> int:
 
 def cmd_next(args) -> int:
     from .coach import next_action
-    r = next_action(args.machine)
+    r = next_action(args.machine, category=getattr(args, "category", "") or None)
     if not r.get("ok"):
         print("Отказ:", r.get("error"), file=sys.stderr)
         return 3
@@ -317,6 +317,7 @@ def build_parser() -> argparse.ArgumentParser:
     cl.set_defaults(func=cmd_class)
     nx = sub.add_parser("next", help="Следующий шаг коуча по фактам сессии")
     nx.add_argument("machine", help="slug сессии")
+    nx.add_argument("--category", default="", help="web|pwn|rev|crypto|…")
     nx.set_defaults(func=cmd_next)
     ing = sub.add_parser("ingest", help="Сохранить вывод nmap/http/source в сессию")
     ing.add_argument("machine", help="slug сессии")

@@ -109,6 +109,8 @@ class Settings:
     log_level: str = "INFO"
     database_url: str = "sqlite+aiosqlite:///./data/lab.db"
     mcp_transport: str = "stdio"
+    # Опционально: «посмотри сюда в коде» без payload. По умолчанию выкл.
+    soft_hints: bool = False
 
     @property
     def effective_cidrs(self) -> list[str]:
@@ -226,6 +228,7 @@ def load_settings() -> Settings:
         log_level=_getenv("LOG_LEVEL", "INFO"),
         database_url=_getenv("DATABASE_URL", "sqlite+aiosqlite:///./data/lab.db"),
         mcp_transport=_getenv("MCP_TRANSPORT", "stdio"),
+        soft_hints=_getbool("SOFT_HINTS", False),
     )
 
 

@@ -157,4 +157,5 @@ def capabilities(s: Settings) -> dict:
         "spawned_target_set": bool(s.spawned_target),
         "allow_loopback": s.allow_loopback,
         "max_scans_per_hour": s.max_scans_per_hour,
+        "soft_hints": bool(getattr(s, "soft_hints", False)),
     }

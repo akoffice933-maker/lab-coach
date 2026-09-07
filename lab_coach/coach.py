@@ -194,7 +194,7 @@ def scope_target(machine: str) -> str:
     return m.group(1) if m else line
 
 
-def init_session(machine: str, target: str) -> dict:
+def init_session(machine: str, target: str, category: str | None = None) -> dict:
     from .config import load_settings
     s = load_settings()
     init_db(s.database_url)
@@ -214,8 +214,15 @@ def init_session(machine: str, target: str) -> dict:
         f.write(target + "\n")
     with open(os.path.join(d, "scope.txt"), "w", encoding="utf-8") as f:
         f.write(f"SCOPE: только {target} (сессия {machine.strip()}).\nПодсети, чужие IP, интернет — запрещены.\n")
-    if not os.path.exists(os.path.join(d, "facts.json")):
-        _save_facts(d, {"target": target, "ports": [], "ingests": [], "classes": []})
+    from .hints import normalize_category
+    cat = normalize_category(category)
+    facts0 = _load_facts(d)
+    if not facts0:
+        facts0 = {"target": target, "ports": [], "ingests": [], "classes": []}
+    facts0["target"] = target
+    if cat:
+        facts0["category"] = cat
+    _save_facts(d, facts0)
     notes = os.path.join(d, "notes.md")
     if not os.path.exists(notes):
         ts = time.strftime("%Y-%m-%d %H:%M")
@@ -229,6 +236,7 @@ def init_session(machine: str, target: str) -> dict:
             "Дальше: get_plan_step(0), затем ping и /etc/hosts.")
     return {"ok": True, "dir": d, "target": target,
             "subdirs": list(SUBDIRS),
+            "category": cat or None,
             "hint": hint}
 
 
@@ -654,6 +662,7 @@ def ingest_output(machine: str, kind: str, text: str) -> dict:
             added += 1
     facts["ingests"].append({"kind": k, "path": rel.replace("\\", "/"), "ts": ts, "bytes": len(body)})
     facts["ingests"] = facts["ingests"][-50:]
+    facts["preview"] = body[:1500]
     hint_class = local_danger(body[:1500])
     if hint_class and hint_class not in facts["classes"]:
         facts["classes"].append(hint_class[:240])
@@ -661,6 +670,7 @@ def ingest_output(machine: str, kind: str, text: str) -> dict:
     _save_facts(d, facts)
     log_event(s.database_url, user=f"mcp:{s.agent_role}", action="ingest_ok",
               target=machine.strip()[:200], detail=f"[{s.agent_role}] kind={k} ports+={added}")
+    from .hints import soft_hints_for
     out = {
         "ok": True,
         "machine": machine.strip(),
@@ -669,6 +679,7 @@ def ingest_output(machine: str, kind: str, text: str) -> dict:
         "ports": facts["ports"],
         "ports_added": added,
         "class_hint": hint_class,
+        "soft_hints": soft_hints_for(body[:1500], hint_class, enabled=bool(s.soft_hints)),
         "next": "Дальше: next_action — что делать по этим фактам. Класс дыры — explain/class, без payload.",
     }
     if looks_like_auth_attack_request(body):
@@ -677,9 +688,10 @@ def ingest_output(machine: str, kind: str, text: str) -> dict:
     return out
 
 
-def next_action(machine: str) -> dict:
+def next_action(machine: str, category: str | None = None) -> dict:
     """Следующий шаг коуча по фактам сессии. Команды выполняет человек."""
     from .config import load_settings
+    from .hints import category_overlay, detect_category, soft_hints_for
     from .policy import OFFLINE_CTF_LABELS
     s = load_settings()
     st = session_status(machine)
@@ -699,6 +711,12 @@ def next_action(machine: str) -> dict:
         int(p.get("port") or 0) in WEB_PORTS or str(p.get("service") or "").lower() in WEB_SERVICES
         for p in ports
     )
+    cat = detect_category(explicit=category or "", facts=facts, ports=ports,
+                          offline=offline, ctf=ctf)
+    if cat and facts.get("category") != cat:
+        facts["category"] = cat
+        _save_facts(d, facts)
+
     you_run: list[str] = []
     coach_tools: list[str] = []
     questions: list[str] = []
@@ -741,7 +759,7 @@ def next_action(machine: str) -> dict:
         step = "classify"
         why = "Порты известны — назовите класс каждого сервиса, не прыгая в эксплуатацию."
         you_run = ["По каждой версии — advisory/комната HTB по теме, без готового PoC"]
-        coach_tools = ["class", "explain_report", "get_plan_step(2)"]
+        coach_tools = ["class", "explain_report", "get_plan_step"]
         questions = ["Что устарело?", "Какой один вектор самый вероятный и почему?"]
     else:
         step = st.get("next") or "изучение"
@@ -750,11 +768,28 @@ def next_action(machine: str) -> dict:
         coach_tools = ["get_plan_step", "log_note", "harden_checklist"]
         questions = ["Что уже опровергнуто?", "Чему научились за этот шаг?"]
 
+    overlay = category_overlay(cat)
+    for item in overlay.get("you_run") or []:
+        if item not in you_run:
+            you_run.append(item)
+    for item in overlay.get("questions") or []:
+        if item not in questions:
+            questions.append(item)
+    if cat:
+        pb = ("get_ctf_playbook(" + cat + ")") if cat != "machine" else "get_plan_step"
+        if pb not in coach_tools:
+            coach_tools.append(pb)
+
+    hay = " ".join(str(x) for x in (facts.get("classes") or []))
+    hay += " " + str(facts.get("preview") or "")
+    hints = soft_hints_for(hay, target, cat, enabled=bool(s.soft_hints))
+
     port_lines = [f"{p.get('port')}/{p.get('proto')} {p.get('service') or ''}".strip() for p in ports[:20]]
-    return {
+    out = {
         "ok": True,
         "machine": machine.strip(),
         "target": target,
+        "category": cat or None,
         "ctf": ctf,
         "step": step,
         "why": why,
@@ -762,7 +797,15 @@ def next_action(machine: str) -> dict:
         "you_run": you_run,
         "coach_tools": coach_tools,
         "questions": questions,
+        "soft_hints": hints,
+        "soft_hints_enabled": bool(s.soft_hints),
         "rules": ("Команды выполняешь ты. Агент не пишет payload, не логинится "
                   "и не сдаёт флаг. Scope — только цель сессии."),
         "session_next": st.get("next"),
     }
+    if s.soft_hints and not hints:
+        out["soft_hints_note"] = ("SOFT_HINTS=true, но по текущим фактам нет совпадений. "
+                                  "Скормите ingest_output (http/source) — подсказка класса появится.")
+    elif not s.soft_hints:
+        out["soft_hints_note"] = "Включите SOFT_HINTS=true в .env для подсказок «куда смотреть» (без payload)."
+    return out

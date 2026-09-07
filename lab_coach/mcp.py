@@ -63,7 +63,10 @@ TOOL_DEFS = [
     {"name": "import_scanbot_report", "description": "Импортировать scan-*.json прод-бота без повторного скана.",
      "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
     {"name": "init_session", "description": "Начать сессию методологии: каталог ~/HTB/<machine>, scope на ОДНУ lab-цель.",
-     "inputSchema": {"type": "object", "properties": {"machine": {"type": "string"}, "target": {"type": "string"}}, "required": ["machine", "target"]}},
+     "inputSchema": {"type": "object", "properties": {
+         "machine": {"type": "string"}, "target": {"type": "string"},
+         "category": {"type": "string", "description": "web|pwn|rev|crypto|forensics|machine|…"}},
+      "required": ["machine", "target"]}},
     {"name": "session_status", "description": "Статус сессии: файлы, готовность шагов 0-6, что делать дальше.",
      "inputSchema": {"type": "object", "properties": {"machine": {"type": "string"}}, "required": ["machine"]}},
     {"name": "log_note", "description": "Дописать заметку в notes.md сессии (шаг 0-6).",
@@ -86,7 +89,10 @@ TOOL_DEFS = [
          "kind": {"type": "string", "description": "nmap|nuclei|http|source|notes|other"},
          "text": {"type": "string"}}, "required": ["machine", "kind", "text"]}},
     {"name": "next_action", "description": "Следующий шаг коуча по фактам сессии. Команды выполняет человек.",
-     "inputSchema": {"type": "object", "properties": {"machine": {"type": "string"}}, "required": ["machine"]}},
+     "inputSchema": {"type": "object", "properties": {
+         "machine": {"type": "string"},
+         "category": {"type": "string", "description": "web|pwn|rev|crypto|… если известна с карточки"}},
+      "required": ["machine"]}},
 ]
 
 # Матрица ролей Red vs Blue (coach = всё). Платформу задаёт человек в env.
@@ -272,7 +278,9 @@ def tool_import_scanbot_report(args: dict) -> dict:
 
 
 def tool_init_session(args: dict) -> dict:
-    r = _init_session(str(args.get("machine", "")), str(args.get("target", "")))
+    cat = args.get("category")
+    r = _init_session(str(args.get("machine", "")), str(args.get("target", "")),
+                      category=cat if isinstance(cat, str) else None)
     return _ok(r) if r.get("ok") else _err(str(r.get("error", "отказ")))
 
 
@@ -327,7 +335,9 @@ def tool_ingest_output(args: dict) -> dict:
 
 
 def tool_next_action(args: dict) -> dict:
-    r = _next_action(str(args.get("machine", "")))
+    cat = args.get("category")
+    r = _next_action(str(args.get("machine", "")),
+                     category=cat if isinstance(cat, str) else None)
     return _ok(r) if r.get("ok") else _err(str(r.get("error", "отказ")))
 
 

@@ -1,0 +1,30 @@
+# Быстрый lab: OWASP Juice Shop в изолированной сети.
+# Не Metasploitable (это отдельная VM, см. practice/LAB-VM-GUIDE.md).
+#
+#   docker compose up -d
+#   cp practice/.env.docker .env   # ADMIN_IDS=1
+#   python -m lab_coach doctor
+#   python -m lab_coach session-init juiceshop 172.30.0.10 --category web
+#   python -m lab_coach scan http://172.30.0.10:3000/
+#
+# Остановить: docker compose down
+
+name: lab-coach-lab
+
+networks:
+  lab:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+services:
+  juiceshop:
+    image: bkimminich/juice-shop:v17.3.0
+    restart: unless-stopped
+    networks:
+      lab:
+        ipv4_address: 172.30.0.10
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      NODE_ENV: "unsafe"

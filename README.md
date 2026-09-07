@@ -1,6 +1,6 @@
 # Lab Coach
 
-Учебный defensive-ассистент для изолированного полигона. Версия пакета **1.9.0** (MCP Content-Length для Cursor/Claude + память сессии).
+Учебный defensive-ассистент для изолированного полигона. Версия пакета **1.10.0** (категории next_action, SOFT_HINTS, Cursor за 5 мин, docker-lab).
 
 ## Зачем этот агент на [Hack The Box](https://www.hackthebox.com/)
 
@@ -46,6 +46,7 @@ python -m lab_coach next mytask
 - `NMAP_ENABLED=false` по умолчанию; если включён — только `-sV -T4 --top-ports`, без NSE exploit-скриптов. Nuclei всегда с `-ni` и `-etags exploit,intrusive,dos` (и в CLI, и в MCP).
 - `LLM_ENABLED=true` по умолчанию (OpenRouter/Ollama). `false` — только локальные шаблоны «Чем опасно», без сети к модели.
 - `MAX_SCANS_PER_HOUR=20` — одна цель на вызов, списки/CIDR/подсети запрещены.
+- `SOFT_HINTS=false` — опционально `true`: «куда смотреть в коде/UI», без payload.
 
 ## Использование
 
