@@ -1,6 +1,6 @@
 # Lab Coach
 
-Учебный defensive-ассистент для изолированного полигона. Версия пакета **1.8.0** (ТЗ 1.4 + Ollama/MCP/роли).
+Учебный defensive-ассистент для изолированного полигона. Версия пакета **1.9.0** (MCP Content-Length для Cursor/Claude + память сессии).
 
 ## Зачем этот агент на [Hack The Box](https://www.hackthebox.com/)
 
@@ -28,6 +28,7 @@ python -m lab_coach playbook reversing
 python -m lab_coach plan 0 offline
 python -m lab_coach class "date format"
 python -m lab_coach session-init mytask offline
+python -m lab_coach next mytask
 ```
 
 `doctor` / `playbook` / `plan` / `class` — без сети к цели. `scan` / `session-init` без `ADMIN_IDS` не стартуют (fail-closed).
@@ -70,6 +71,9 @@ python -m lab_coach login foo           # нет такого действия +
 Агент (Claude / Cursor / свой MCP-клиент) подключается **только stdio** на машине,
 где поднят VPN/VM. Ключи OpenRouter — в env клиента, не в чат.
 
+Протокол — JSON-RPC 2.0 с **Content-Length** (как у LSP). Так говорят Cursor и Claude Desktop.
+Для отладки ещё принимается одна JSON-строка на сообщение (NDJSON).
+
 ```json
 { "mcpServers": { "lab-coach": {
   "command": "python", "args": ["-m", "lab_coach.mcp"],
@@ -77,11 +81,12 @@ python -m lab_coach login foo           # нет такого действия +
 } } }
 ```
 
-См. `mcp_config.example.json` и `practice/MCP-AGENT-GUIDE.md`. Tools (15):
+См. `mcp_config.example.json` и `practice/MCP-AGENT-GUIDE.md`. Tools (17):
 скан-слой — `get_lab_status`, `set_platform`, `scan_lab_target`,
 `explain_mission`, `explain_report`, `import_scanbot_report`;
 coach-слой методологии 0–6 — `init_session`, `session_status`, `log_note`,
-`get_plan_step`, `read_session_file` (сессии в `HTB_DIR`, цель проверяется LabPolicy);
+`get_plan_step`, `read_session_file`, `ingest_output`, `next_action`
+(сессии в `HTB_DIR`, цель проверяется LabPolicy; факты — в `facts.json`);
 роли — `get_role_brief`, синие `harden_checklist`, `verify_fix`.
 Режим Red vs Blue: `AGENT_ROLE=red|blue|coach` (матрица и сценарий — в `practice/RED-BLUE-GUIDE.md`).
 Запрещённых tools (`run_exploit`, `msf_*`, `shell`, `login`, `set_password`, `run_kaligpt`, …) нет.

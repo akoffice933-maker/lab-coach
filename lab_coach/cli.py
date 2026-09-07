@@ -245,6 +245,36 @@ def cmd_class(args) -> int:
     return 0
 
 
+def cmd_next(args) -> int:
+    from .coach import next_action
+    r = next_action(args.machine)
+    if not r.get("ok"):
+        print("Отказ:", r.get("error"), file=sys.stderr)
+        return 3
+    print(json.dumps(r, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_ingest(args) -> int:
+    from .coach import ingest_output
+    text = args.text
+    if args.file:
+        try:
+            with open(args.file, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError as e:
+            print(f"Не могу прочитать {args.file}: {e}", file=sys.stderr)
+            return 2
+    elif not text:
+        text = sys.stdin.read()
+    r = ingest_output(args.machine, args.kind, text)
+    if not r.get("ok"):
+        print("Отказ:", r.get("error"), file=sys.stderr)
+        return 3
+    print(json.dumps(r, ensure_ascii=False, indent=2))
+    return 0
+
+
 def cmd_auth_denied(args) -> int:
     s = load_settings()
     _setup_logging(s.log_level)
@@ -285,6 +315,15 @@ def build_parser() -> argparse.ArgumentParser:
     cl = sub.add_parser("class", help="Класс дыры по короткому описанию (теория)")
     cl.add_argument("text", help="например: date format / xss / sqli")
     cl.set_defaults(func=cmd_class)
+    nx = sub.add_parser("next", help="Следующий шаг коуча по фактам сессии")
+    nx.add_argument("machine", help="slug сессии")
+    nx.set_defaults(func=cmd_next)
+    ing = sub.add_parser("ingest", help="Сохранить вывод nmap/http/source в сессию")
+    ing.add_argument("machine", help="slug сессии")
+    ing.add_argument("kind", help="nmap|nuclei|http|source|notes|other")
+    ing.add_argument("text", nargs="?", default="", help="текст (или stdin / --file)")
+    ing.add_argument("--file", dest="file", default="", help="прочитать вывод из файла")
+    ing.set_defaults(func=cmd_ingest)
     # Запрещённые действия: явный отказ + audit (приёмка §15)
     for name in ("login", "set-password", "set_password", "change-password",
                  "change_password", "reset-password", "reset_password", "auth-bypass"):

@@ -1,7 +1,8 @@
-# MCP для ИИ-агента: подключение и сессия (v1.6.0)
+# MCP для ИИ-агента: подключение и сессия (v1.9.0)
 
-Lab Coach отдаёт агенту (Claude / Cursor / свой MCP-клиент) 11 tools по stdio —
-6 сканерно-объяснительных и 5 coach-сессий по шагам `plan.txt` 0–6.
+Lab Coach отдаёт агенту (Claude / Cursor / свой MCP-клиент) tools по **stdio**.
+Протокол — JSON-RPC 2.0 с заголовком `Content-Length` (как Language Server Protocol).
+Это то, что реально шлют Cursor и Claude Desktop. Для дымовухи ещё принимается NDJSON.
 
 ## Что умеет агент
 
@@ -18,6 +19,8 @@ Lab Coach отдаёт агенту (Claude / Cursor / свой MCP-клиент
 | `log_note` | дописать заметку в `notes.md` (шаг 0–6) |
 | `get_plan_step` | методология шага: recon-команды с подставленной целью, чек-листы (без пейлоадов) |
 | `read_session_file` | прочитать файл сессии (за пределы каталога — отказ) |
+| `ingest_output` | сохранить вывод nmap/nuclei/http/source в сессию, обновить `facts.json` |
+| `next_action` | следующий шаг коуча по фактам (команды выполняет человек) |
 
 Чего у агента НЕТ и не будет: `run_exploit`, `msf_*`, `shell`, `login`,
 `set_password`, `run_kaligpt`, `run_pentestgpt` — запрос такого tool возвращает отказ.
@@ -45,8 +48,9 @@ Lab Coach отдаёт агенту (Claude / Cursor / свой MCP-клиент
   macOS `~/Library/Application Support/Claude/claude_desktop_config.json`,
   Windows `%APPDATA%\Claude\claude_desktop_config.json`. После правки — перезапустить.
 - **Cursor**: Settings → MCP → Add new global MCP server → тот же JSON.
-- Проверка без клиента (дымовуха stdio):
-  `printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | python -m lab_coach.mcp`
+- Проверка без клиента (дымовуха NDJSON):
+  `printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}' | python -m lab_coach.mcp`
+- Cursor/Claude шлют `Content-Length: N\\r\\n\\r\\n{json}` — тот же `python -m lab_coach.mcp`.
 
 ## Пример сессии (PlanBox)
 

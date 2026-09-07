@@ -60,7 +60,7 @@ def run_nmap(target_host: str, timeout: int = 900) -> dict:
     if not tool_available("nmap"):
         return {"scanner": "nmap", "status": "skipped",
                 "note": "nmap не найден в PATH — шаг пропущен."}
-    argv = ["nmap", "-sV", "-T4", "--top-ports", "50", target_host]
+    argv = ["nmap", "-sV", "-T4", "--top-ports", "50", "--", target_host]
     try:
         p = subprocess.run(argv, shell=False, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:

@@ -67,6 +67,21 @@ def test_load_dotenv_does_not_override(tmp_path, monkeypatch):
     assert os.environ.get("ADMIN_IDS") == "42"
 
 
+def test_htb_default_rfc1918_keeps_both_machine_ranges():
+    # Регрессия: break после первой сети профиля выкидывал 10.129/16.
+    s = Settings(lab_platform="htb",
+                 allowed_lab_cidrs_raw="10.0.0.0/8,172.16.0.0/12,192.168.0.0/16")
+    cidrs = s.effective_cidrs
+    assert "10.10.10.0/23" in cidrs
+    assert "10.129.0.0/16" in cidrs
+    assert "10.0.0.0/8" not in cidrs
+
+
+def test_htb_empty_intersection_is_deny_not_expand():
+    s = Settings(lab_platform="htb", allowed_lab_cidrs_raw="192.168.56.0/24")
+    assert s.effective_cidrs == []
+
+
 def test_htb_env_example_narrows(monkeypatch, tmp_path):
     monkeypatch.setenv("LAB_COACH_STATE", str(tmp_path / "no-state.json"))
     monkeypatch.setenv("LAB_PLATFORM", "htb")

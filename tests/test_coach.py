@@ -25,6 +25,9 @@ def test_init_session_ok(monkeypatch, tmp_path):
         assert os.path.isdir(os.path.join(r["dir"], sub))
     assert os.path.exists(os.path.join(r["dir"], "scope.txt"))
     assert os.path.exists(os.path.join(r["dir"], "notes.md"))
+    assert os.path.exists(os.path.join(r["dir"], "target.txt"))
+    assert os.path.exists(os.path.join(r["dir"], "facts.json"))
+    assert coach.scope_target("planbox") == "192.168.56.110"
 
 
 def test_init_session_public_denied(monkeypatch, tmp_path):
@@ -84,3 +87,25 @@ def test_mcp_routes_new_tools(monkeypatch, tmp_path):
     assert not r3.get("isError"), r3
     r4 = _dispatch_tool("init_session", {"machine": "evil", "target": "8.8.8.8"})
     assert r4.get("isError")
+
+
+def test_ingest_and_next_action(monkeypatch, tmp_path):
+    _env(monkeypatch, tmp_path)
+    assert coach.init_session("planbox", "192.168.56.110")["ok"]
+    nmap = "PORT     STATE SERVICE VERSION\n22/tcp   open  ssh     OpenSSH 7.9\n80/tcp   open  http    Apache 2.4.29\n"
+    r = coach.ingest_output("planbox", "nmap", nmap)
+    assert r["ok"], r
+    assert r["ports_added"] == 2
+    assert any(p["port"] == 80 for p in r["ports"])
+    nxt = coach.next_action("planbox")
+    assert nxt["ok"]
+    assert nxt["target"] == "192.168.56.110"
+    assert nxt["step"] in ("web look", "classify", "recon")
+    blob = json.dumps(nxt).lower()
+    assert "msfvenom" not in blob
+    assert "reverse shell" not in blob
+    http = coach.ingest_output("planbox", "http", "HTTP/1.1 200 OK\nServer: Apache/2.4.29\n")
+    assert http["ok"]
+    nxt2 = coach.next_action("planbox")
+    assert nxt2["ok"]
+    assert "rules" in nxt2

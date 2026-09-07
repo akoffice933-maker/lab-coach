@@ -121,19 +121,27 @@ class Settings:
                 env_nets = [ipaddress.ip_network(c, strict=False) for c in raw]
             except ValueError:
                 return raw
-            # Пересечение: оставляем только env-сети, покрытые профилем (сужение).
+            # Пересечение: профиль сужает env, не расширяет.
+            # Каждая сеть профиля, лежащая внутри env (или равная), попадает в результат.
+            # Пустое пересечение = deny (не откатываемся на полный профиль).
             narrowed: list[str] = []
+            seen: set[str] = set()
             for en in env_nets:
                 for pn in profile_nets:
                     if en.version != pn.version:
                         continue
+                    piece = None
                     if en.subnet_of(pn) or en == pn:
-                        narrowed.append(str(en))
-                        break
-                    if pn.subnet_of(en):
-                        narrowed.append(str(pn))
-                        break
-            return narrowed or profile
+                        piece = en
+                    elif pn.subnet_of(en):
+                        piece = pn
+                    if piece is None:
+                        continue
+                    key = str(piece)
+                    if key not in seen:
+                        seen.add(key)
+                        narrowed.append(key)
+            return narrowed
         if self.lab_platform in ("hackthissite", "ctf"):
             # hackthissite: скан deny; ctf: разрешён ТОЛЬКО SPAWNED_TARGET (см. policy).
             return []

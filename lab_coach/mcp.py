@@ -17,8 +17,10 @@ from .coach import get_ctf_playbook as _ctf_playbook
 from .coach import get_plan_step as _plan_step
 from .coach import get_role_brief as _role_brief
 from .coach import harden_checklist as _harden
+from .coach import ingest_output as _ingest_output
 from .coach import init_session as _init_session
 from .coach import log_note as _log_note
+from .coach import next_action as _next_action
 from .coach import read_session_file as _read_file
 from .coach import session_status as _session_status
 from .coach import verify_fix as _verify_fix
@@ -78,6 +80,13 @@ TOOL_DEFS = [
      "inputSchema": {"type": "object", "properties": {"target": {"type": "string"}, "baseline": {"type": "string"}}, "required": ["target", "baseline"]}},
     {"name": "get_ctf_playbook", "description": "Триаж CTF-категории (web/pwn/crypto/forensics/reversing/misc/osint/blockchain) + правила.",
      "inputSchema": {"type": "object", "properties": {"category": {"type": "string"}}}},
+    {"name": "ingest_output", "description": "Сохранить вывод nmap/nuclei/http/source в сессию и обновить факты (без сети к цели).",
+     "inputSchema": {"type": "object", "properties": {
+         "machine": {"type": "string"},
+         "kind": {"type": "string", "description": "nmap|nuclei|http|source|notes|other"},
+         "text": {"type": "string"}}, "required": ["machine", "kind", "text"]}},
+    {"name": "next_action", "description": "Следующий шаг коуча по фактам сессии. Команды выполняет человек.",
+     "inputSchema": {"type": "object", "properties": {"machine": {"type": "string"}}, "required": ["machine"]}},
 ]
 
 # Матрица ролей Red vs Blue (coach = всё). Платформу задаёт человек в env.
@@ -90,10 +99,12 @@ ROLE_TOOLS: dict[str, set[str] | None] = {
     "coach": None,
     "red": {"get_lab_status", "scan_lab_target", "explain_report",
             "init_session", "session_status", "log_note",
-            "get_plan_step", "get_ctf_playbook", "read_session_file", "get_role_brief"},
+            "get_plan_step", "get_ctf_playbook", "read_session_file", "get_role_brief",
+            "ingest_output", "next_action"},
     "blue": {"get_lab_status", "explain_report", "verify_fix", "harden_checklist",
              "init_session", "session_status", "log_note", "get_ctf_playbook",
-             "read_session_file", "get_role_brief"},
+             "read_session_file", "get_role_brief",
+             "ingest_output", "next_action"},
 }
 
 
@@ -310,6 +321,16 @@ def tool_get_ctf_playbook(args: dict) -> dict:
     return _ok(r)
 
 
+def tool_ingest_output(args: dict) -> dict:
+    r = _ingest_output(str(args.get("machine", "")), str(args.get("kind", "")), str(args.get("text", "")))
+    return _ok(r) if r.get("ok") else _err(str(r.get("error", "отказ")))
+
+
+def tool_next_action(args: dict) -> dict:
+    r = _next_action(str(args.get("machine", "")))
+    return _ok(r) if r.get("ok") else _err(str(r.get("error", "отказ")))
+
+
 TOOLS = {
     "get_lab_status": tool_get_lab_status,
     "set_platform": tool_set_platform,
@@ -358,52 +379,117 @@ def _dispatch_tool(name: str, args: dict) -> dict:
         return _err(f"внутренняя ошибка ({type(e).__name__}).")
 
 
+def read_mcp_message(buf) -> tuple[dict, str] | None:
+    """Прочитать одно JSON-RPC сообщение.
+
+    Cursor/Claude Desktop шлют LSP-framing (Content-Length).
+    Старые смоки и тесты — NDJSON (одна JSON-строка на сообщение).
+    Возвращает (msg, mode) где mode in {'lsp','ndjson'}; None на EOF.
+    """
+    while True:
+        first = buf.readline()
+        if not first:
+            return None
+        if first in (b"\r\n", b"\n", b"\r"):
+            continue
+        stripped = first.lstrip()
+        if stripped.startswith(b"{") or stripped.startswith(b"["):
+            try:
+                return json.loads(first), "ndjson"
+            except ValueError:
+                return None
+        headers: dict[str, str] = {}
+        line = first
+        while line not in (b"\r\n", b"\n", b"\r", b""):
+            if b":" in line:
+                k, _, v = line.partition(b":")
+                headers[k.decode("ascii", "replace").strip().lower()] = v.decode("ascii", "replace").strip()
+            line = buf.readline()
+            if not line:
+                return None
+        try:
+            n = int(headers.get("content-length", "0") or 0)
+        except ValueError:
+            return None
+        if n <= 0 or n > 8_000_000:
+            return None
+        body = b""
+        while len(body) < n:
+            chunk = buf.read(n - len(body))
+            if not chunk:
+                break
+            body += chunk
+        try:
+            return json.loads(body.decode("utf-8")), "lsp"
+        except (ValueError, UnicodeDecodeError):
+            return None
+
+
+def write_mcp_message(buf, obj: dict, mode: str) -> None:
+    body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+    if mode == "lsp":
+        buf.write(f"Content-Length: {len(body)}\r\n\r\n".encode("ascii") + body)
+    else:
+        buf.write(body + b"\n")
+    buf.flush()
+
+
 def serve_stdio() -> int:
     refuse_non_stdio()
     s = load_settings()
     init_db(s.database_url)
-    stdin, stdout = sys.stdin, sys.stdout
-    for line in stdin:
-        line = line.strip()
-        if not line:
+    stdin_buf, stdout_buf = sys.stdin.buffer, sys.stdout.buffer
+    while True:
+        got = read_mcp_message(stdin_buf)
+        if got is None:
+            break
+        msg, mode = got
+        if not isinstance(msg, dict):
             continue
-        try:
-            msg = json.loads(line)
-        except ValueError:
-            continue
-        mid = msg.get("id")
+        mid = msg.get("id", _MISSING)
         method = msg.get("method", "")
         params = msg.get("params", {}) or {}
+        is_notification = mid is _MISSING or mid is None
 
         def reply(result=None, error=None):
+            if is_notification:
+                return
             out = {"jsonrpc": "2.0", "id": mid}
             if error is not None:
                 out["error"] = error
             else:
                 out["result"] = result
-            stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
-            stdout.flush()
+            write_mcp_message(stdout_buf, out, mode)
 
         if method == "initialize":
-            reply({"protocolVersion": "2024-11-05",
+            client_ver = ""
+            if isinstance(params, dict):
+                client_ver = str(params.get("protocolVersion") or "")
+            # 2024-11-05 понимают Claude Desktop и Cursor; 2025-03-26 — новые клиенты.
+            proto = client_ver if client_ver in ("2024-11-05", "2025-03-26", "2025-06-18") else "2024-11-05"
+            reply({"protocolVersion": proto,
                    "serverInfo": {"name": "lab-coach", "version": __version__},
-                   "capabilities": {"tools": {}}})
+                   "capabilities": {"tools": {"listChanged": False}}})
         elif method in ("notifications/initialized", "notifications/cancelled"):
             continue
         elif method == "tools/list":
             ok_role = load_settings().agent_role
             allowed = ROLE_TOOLS.get(ok_role)
             defs = TOOL_DEFS if allowed is None else [t for t in TOOL_DEFS if t["name"] in allowed]
-            reply({"tools": defs, "role": ok_role})
+            reply({"tools": defs})
         elif method == "tools/call":
-            name = params.get("name", "")
-            args = params.get("arguments", {}) or {}
+            name = params.get("name", "") if isinstance(params, dict) else ""
+            args = (params.get("arguments", {}) or {}) if isinstance(params, dict) else {}
             reply(_dispatch_tool(name, args))
         elif method == "ping":
-            reply("pong")
+            reply({})
         else:
-            reply(None, {"code": -32601, "message": f"unknown method {method!r}"})
+            if not is_notification:
+                reply(None, {"code": -32601, "message": f"unknown method {method!r}"})
     return 0
+
+
+_MISSING = object()
 
 
 def main() -> int:

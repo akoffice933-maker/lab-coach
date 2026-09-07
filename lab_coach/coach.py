@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import time
@@ -15,6 +16,11 @@ from .policy import check_target_allowed, looks_like_auth_attack_request
 SLUG_RX = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 SUBDIRS = ("nmap", "loot", "exploits", "www")
 MAX_READ = 200_000
+MAX_INGEST = 200_000
+INGEST_KINDS = ("nmap", "nuclei", "http", "source", "notes", "other")
+NMAP_PORT_RX = re.compile(r"^(\d+)/(tcp|udp)\s+open(?:\s+|/)(\S+)?", re.I | re.M)
+WEB_PORTS = {80, 443, 8080, 8000, 8443, 3000, 5000, 8888, 9443}
+WEB_SERVICES = {"http", "https", "http-proxy", "ssl/http", "http-alt"}
 
 NOTES_TEMPLATE = """# Сессия: {machine} ({target})
 
@@ -129,12 +135,63 @@ def machine_dir(machine: str) -> str:
     return d
 
 
-def scope_target(machine: str) -> str:
+def _load_facts(d: str) -> dict:
+    path = os.path.join(d, "facts.json")
     try:
-        with open(os.path.join(machine_dir(machine), "scope.txt"), encoding="utf-8") as f:
-            return f.read().strip().splitlines()[0] if f else ""
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_facts(d: str, facts: dict) -> None:
+    path = os.path.join(d, "facts.json")
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(facts, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    os.replace(tmp, path)
+
+
+def _parse_nmap_ports(text: str) -> list[dict]:
+    out: list[dict] = []
+    seen: set[tuple] = set()
+    for m in NMAP_PORT_RX.finditer(text or ""):
+        port = int(m.group(1))
+        proto = (m.group(2) or "tcp").lower()
+        svc = (m.group(3) or "").split()[0].rstrip("?") if m.group(3) else ""
+        key = (port, proto)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"port": port, "proto": proto, "service": svc})
+    return out
+
+
+def scope_target(machine: str) -> str:
+    d = None
+    try:
+        d = machine_dir(machine)
+        with open(os.path.join(d, "target.txt"), encoding="utf-8") as f:
+            t = f.read().strip().splitlines()
+            if t and t[0].strip():
+                return t[0].strip()
+    except (OSError, ValueError):
+        pass
+    if not d:
+        try:
+            d = machine_dir(machine)
+        except ValueError:
+            return ""
+    try:
+        with open(os.path.join(d, "scope.txt"), encoding="utf-8") as f:
+            line = f.read().strip().splitlines()[0] if f else ""
     except OSError:
         return ""
+    # "SCOPE: только <target> (сессия ...)." — вытащить цель, не всю фразу.
+    m = re.search(r"только\s+(\S+)", line)
+    return m.group(1) if m else line
 
 
 def init_session(machine: str, target: str) -> dict:
@@ -153,8 +210,12 @@ def init_session(machine: str, target: str) -> dict:
         return {"ok": False, "error": str(e)}
     for sub in SUBDIRS:
         os.makedirs(os.path.join(d, sub), exist_ok=True)
+    with open(os.path.join(d, "target.txt"), "w", encoding="utf-8") as f:
+        f.write(target + "\n")
     with open(os.path.join(d, "scope.txt"), "w", encoding="utf-8") as f:
         f.write(f"SCOPE: только {target} (сессия {machine.strip()}).\nПодсети, чужие IP, интернет — запрещены.\n")
+    if not os.path.exists(os.path.join(d, "facts.json")):
+        _save_facts(d, {"target": target, "ports": [], "ingests": [], "classes": []})
     notes = os.path.join(d, "notes.md")
     if not os.path.exists(notes):
         ts = time.strftime("%Y-%m-%d %H:%M")
@@ -532,3 +593,176 @@ def read_session_file(machine: str, path: str) -> dict:
     truncated = len(content) > MAX_READ
     return {"ok": True, "path": norm, "size": size,
             "truncated": truncated, "content": content[:MAX_READ]}
+
+
+def ingest_output(machine: str, kind: str, text: str) -> dict:
+    """Сохранить вывод инструмента человека в сессию и обновить facts.json.
+
+    Сеть к цели не ходим. Класс дыры — через explain, без payload.
+    """
+    from .config import load_settings
+    from .explain import local_danger
+    s = load_settings()
+    init_db(s.database_url)
+    k = (kind or "other").strip().lower()
+    if k not in INGEST_KINDS:
+        return {"ok": False, "error": f"kind должен быть один из: {', '.join(INGEST_KINDS)}"}
+    body = text or ""
+    if not body.strip():
+        return {"ok": False, "error": "пустой вывод — нечего сохранять."}
+    if len(body) > MAX_INGEST:
+        return {"ok": False, "error": f"вывод слишком длинный (>{MAX_INGEST} байт). Обрежьте до nmap/фрагмента."}
+    try:
+        d = machine_dir(machine)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    if not os.path.isdir(d):
+        return {"ok": False, "error": f"сессии {machine!r} нет — сначала init_session."}
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    if k == "nmap":
+        rel = os.path.join("nmap", f"ingest-{ts}.txt")
+        primary = os.path.join(d, "nmap", "allports.txt")
+        if not os.path.exists(primary):
+            rel = os.path.join("nmap", "allports.txt")
+    elif k == "notes":
+        rel = "notes.md"
+    else:
+        rel = os.path.join("loot", f"{k}-{ts}.txt")
+    full = os.path.join(d, rel)
+    os.makedirs(os.path.dirname(full), exist_ok=True)
+    if k == "notes":
+        with open(full, "a", encoding="utf-8") as f:
+            f.write(f"\n### ingest notes {ts}:\n{body.strip()}\n")
+    else:
+        with open(full, "w", encoding="utf-8") as f:
+            f.write(body)
+            if not body.endswith("\n"):
+                f.write("\n")
+    facts = _load_facts(d)
+    facts.setdefault("target", scope_target(machine))
+    facts.setdefault("ports", [])
+    facts.setdefault("ingests", [])
+    facts.setdefault("classes", [])
+    new_ports = _parse_nmap_ports(body) if k in ("nmap", "other", "http") else []
+    existing = {(p.get("port"), p.get("proto")) for p in facts["ports"] if isinstance(p, dict)}
+    added = 0
+    for p in new_ports:
+        key = (p["port"], p["proto"])
+        if key not in existing:
+            facts["ports"].append(p)
+            existing.add(key)
+            added += 1
+    facts["ingests"].append({"kind": k, "path": rel.replace("\\", "/"), "ts": ts, "bytes": len(body)})
+    facts["ingests"] = facts["ingests"][-50:]
+    hint_class = local_danger(body[:1500])
+    if hint_class and hint_class not in facts["classes"]:
+        facts["classes"].append(hint_class[:240])
+        facts["classes"] = facts["classes"][-20:]
+    _save_facts(d, facts)
+    log_event(s.database_url, user=f"mcp:{s.agent_role}", action="ingest_ok",
+              target=machine.strip()[:200], detail=f"[{s.agent_role}] kind={k} ports+={added}")
+    out = {
+        "ok": True,
+        "machine": machine.strip(),
+        "saved": rel.replace("\\", "/"),
+        "kind": k,
+        "ports": facts["ports"],
+        "ports_added": added,
+        "class_hint": hint_class,
+        "next": "Дальше: next_action — что делать по этим фактам. Класс дыры — explain/class, без payload.",
+    }
+    if looks_like_auth_attack_request(body):
+        out["reminder"] = ("Напоминание: это только сохранение текста. "
+                           "Lab Coach не логинится и не подбирает пароли.")
+    return out
+
+
+def next_action(machine: str) -> dict:
+    """Следующий шаг коуча по фактам сессии. Команды выполняет человек."""
+    from .config import load_settings
+    from .policy import OFFLINE_CTF_LABELS
+    s = load_settings()
+    st = session_status(machine)
+    if not st.get("ok"):
+        return st
+    try:
+        d = machine_dir(machine)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    target = scope_target(machine) or "<цель>"
+    facts = _load_facts(d)
+    ports = [p for p in (facts.get("ports") or []) if isinstance(p, dict)]
+    kinds = {str(i.get("kind")) for i in (facts.get("ingests") or []) if isinstance(i, dict)}
+    offline = target.lower() in OFFLINE_CTF_LABELS
+    ctf = s.lab_platform == "ctf" or bool(s.spawned_target) or offline
+    web = any(
+        int(p.get("port") or 0) in WEB_PORTS or str(p.get("service") or "").lower() in WEB_SERVICES
+        for p in ports
+    )
+    you_run: list[str] = []
+    coach_tools: list[str] = []
+    questions: list[str] = []
+
+    if offline:
+        step = "offline files"
+        why = "Файловый таск: сети нет. Работаем с вложениями локально."
+        you_run = [
+            "file / strings / заголовки на копии вложения (не на хосте-проде)",
+            "Положить интересные куски в loot/ и скормить ingest_output kind=source",
+        ]
+        coach_tools = ["get_ctf_playbook(reversing|crypto|forensics)", "ingest_output", "class"]
+        questions = ["Что за тип файла vs расширение?", "Куда в исходнике попадает пользовательский ввод?"]
+    elif not ports and "nmap" not in kinds and "nuclei" not in kinds:
+        step = "recon"
+        if ctf:
+            why = "Фактов о портах ещё нет. CTF-docker: ping не делать, один gentle-скан своего инстанса."
+            you_run = [
+                f"Открыть в браузере http://{target}/ если web",
+                "Вложения таска — локально",
+            ]
+            coach_tools = [f"scan_lab_target({target})", "ingest_output kind=http|nmap"]
+        else:
+            why = "Нет вывода разведки по цели сессии. Один хост, не подсеть."
+            you_run = [
+                f"nmap -sV -T4 --top-ports 50 -- {target}  (сохранить в nmap/allports.txt)",
+            ]
+            coach_tools = [f"scan_lab_target({target})", "ingest_output kind=nmap"]
+        questions = ["Какие порты открыты?", "Какие точные версии сервисов?"]
+    elif web and "http" not in kinds and "source" not in kinds:
+        step = "web look"
+        why = "Есть веб-порт, но нет сохранённых заголовков/исходника."
+        you_run = [
+            "Глазами: заголовок ответа, cookies, robots.txt, исходник страницы",
+            "Положить заголовки/HTML в сессию через ingest_output kind=http",
+        ]
+        coach_tools = ["ingest_output kind=http", "class", "explain_mission"]
+        questions = ["Какой стек и версия?", "Куда попадает ввод (форма/файл/заголовок)?"]
+    elif ports and not facts.get("classes"):
+        step = "classify"
+        why = "Порты известны — назовите класс каждого сервиса, не прыгая в эксплуатацию."
+        you_run = ["По каждой версии — advisory/комната HTB по теме, без готового PoC"]
+        coach_tools = ["class", "explain_report", "get_plan_step(2)"]
+        questions = ["Что устарело?", "Какой один вектор самый вероятный и почему?"]
+    else:
+        step = st.get("next") or "изучение"
+        why = "Факты есть. Дальше — один вектор руками, результат в notes. Флаг сдаёте вы на hackthebox.com."
+        you_run = ["Зафиксировать гипотезу в notes.md", "Один аккуратный шаг, не флуд"]
+        coach_tools = ["get_plan_step", "log_note", "harden_checklist"]
+        questions = ["Что уже опровергнуто?", "Чему научились за этот шаг?"]
+
+    port_lines = [f"{p.get('port')}/{p.get('proto')} {p.get('service') or ''}".strip() for p in ports[:20]]
+    return {
+        "ok": True,
+        "machine": machine.strip(),
+        "target": target,
+        "ctf": ctf,
+        "step": step,
+        "why": why,
+        "ports": port_lines,
+        "you_run": you_run,
+        "coach_tools": coach_tools,
+        "questions": questions,
+        "rules": ("Команды выполняешь ты. Агент не пишет payload, не логинится "
+                  "и не сдаёт флаг. Scope — только цель сессии."),
+        "session_next": st.get("next"),
+    }
