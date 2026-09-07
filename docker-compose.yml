@@ -1,11 +1,12 @@
-# Быстрый lab: OWASP Juice Shop в изолированной сети.
-# Не Metasploitable (это отдельная VM, см. practice/LAB-VM-GUIDE.md).
+# Быстрый lab: Juice Shop + DVWA в изолированной сети 172.30.0.0/24.
+# Metasploitable — отдельная VM, см. practice/LAB-VM-GUIDE.md.
 #
 #   docker compose up -d
-#   cp practice/.env.docker .env   # ADMIN_IDS=1
-#   python -m lab_coach doctor
+#   cp practice/.env.docker .env
 #   python -m lab_coach session-init juiceshop 172.30.0.10 --category web
 #   python -m lab_coach scan http://172.30.0.10:3000/
+#   python -m lab_coach session-init dvwa 172.30.0.11 --category web
+#   python -m lab_coach scan http://172.30.0.11/
 #
 # Остановить: docker compose down
 
@@ -28,3 +29,12 @@ services:
       - "127.0.0.1:3000:3000"
     environment:
       NODE_ENV: "unsafe"
+
+  dvwa:
+    image: vulnerables/web-dvwa:latest
+    restart: unless-stopped
+    networks:
+      lab:
+        ipv4_address: 172.30.0.11
+    ports:
+      - "127.0.0.1:4280:80"

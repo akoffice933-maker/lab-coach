@@ -1,6 +1,8 @@
 # Lab Coach
 
-Учебный defensive-ассистент для изолированного полигона. Версия пакета **1.10.0** (категории next_action, SOFT_HINTS, Cursor за 5 мин, docker-lab).
+Учебный defensive-ассистент для изолированного полигона. Версия пакета **1.10.1**.
+
+Коротко: [Cursor за 5 минут](practice/CURSOR-5MIN.md) · [Docker-lab (Juice Shop + DVWA)](practice/DOCKER-LAB.md) · не автосолвер.
 
 ## Зачем этот агент на [Hack The Box](https://www.hackthebox.com/)
 
@@ -47,6 +49,16 @@ python -m lab_coach next mytask
 - `LLM_ENABLED=true` по умолчанию (OpenRouter/Ollama). `false` — только локальные шаблоны «Чем опасно», без сети к модели.
 - `MAX_SCANS_PER_HOUR=20` — одна цель на вызов, списки/CIDR/подсети запрещены.
 - `SOFT_HINTS=false` — опционально `true`: «куда смотреть в коде/UI», без payload.
+
+Пример при `SOFT_HINTS=true` после `ingest` HTML с формой ping:
+
+```text
+soft_hints:
+  - Если есть форма ping/traceroute — смотрите, уходит ли поле хоста
+    в shell или в argv. Класс: инъекция в команду ОС. Защита: allowlist, без shell.
+```
+
+Готовой строки атаки нет. Без `SOFT_HINTS` поле пустое, в `soft_hints_note` — как включить.
 
 ## Использование
 
@@ -135,8 +147,12 @@ LLM_PROVIDER=ollama OLLAMA_MODEL=qwen2.5:7b python -m lab_coach doctor
 Переменные: `OLLAMA_BASE_URL` (умолч. `http://localhost:11434/v1`), `OLLAMA_MODEL`, опц. `OLLAMA_API_KEY`.
 Свой прокси — через `LLM_PROVIDER=custom` + `OPENROUTER_BASE_URL`/`LLM_MODEL`.
 
+Короткий старт с Cursor: `practice/CURSOR-5MIN.md`. Локальный lab: `docker compose up -d` (Juice Shop `172.30.0.10`, DVWA `172.30.0.11`) — `practice/DOCKER-LAB.md`.
+
 ## Практика (`practice/`)
 
+- `CURSOR-5MIN.md` — Cursor / Claude Desktop за 5 минут.
+- `DOCKER-LAB.md` + `.env.docker` — Juice Shop + DVWA в `172.30.0.0/24`.
 - `LAB-VM-GUIDE.md` + `.env.metasploitable` — домашний полигон (Metasploitable 2 в host-only).
 - `HTB-MACHINE-GUIDE.md` + `.env.htb` + `htb-check.sh` + `mcp_config.htb.example.json` — Hack The Box (Kali VM, VPN внутри гостя, профиль `htb`, fail-closed без tun0).
 - `HTB-CHALLENGE-GUIDE.md` + `.env.htb-challenge` + `mcp_config.htb-challenge.example.json` — HTB Challenges (свой docker `IP:port` в `SPAWNED_TARGET`, VPN не нужен; без jailbreak и без `/flag.txt`).
@@ -151,8 +167,10 @@ LLM_PROVIDER=ollama OLLAMA_MODEL=qwen2.5:7b python -m lab_coach doctor
 
 ```
 lab_coach/  policy.py audit.py scanners.py llm.py explain.py reports.py
-            importer.py platforms.py ratelimit.py secrets.py cli.py mcp.py tg.py
-tests/      test_policy.py test_explain.py test_cli_mcp.py fixtures/sample_report.json
+            importer.py platforms.py ratelimit.py secrets.py hints.py
+            cli.py mcp.py tg.py coach.py
+tests/      test_policy.py test_hints.py test_mcp_framing.py …
+practice/   CURSOR-5MIN.md DOCKER-LAB.md
 ```
 
 ## Тесты

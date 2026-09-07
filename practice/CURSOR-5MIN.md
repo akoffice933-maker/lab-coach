@@ -65,7 +65,7 @@ Claude Desktop: тот же JSON в `claude_desktop_config.json`.
 
 ## 4. Если MCP «молчит»
 
-Сервер говорит JSON-RPC с `Content-Length` (как LSP). Нужен lab-coach ≥ 1.9.0.  
+Сервер говорит JSON-RPC с `Content-Length` (как LSP). Нужен lab-coach ≥ 1.10.  
 Дымовуха:
 
 ```bash

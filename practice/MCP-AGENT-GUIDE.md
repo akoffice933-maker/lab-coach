@@ -1,4 +1,4 @@
-# MCP для ИИ-агента: подключение и сессия (v1.9.0)
+# MCP для ИИ-агента: подключение и сессия (v1.10.1)
 
 Lab Coach отдаёт агенту (Claude / Cursor / свой MCP-клиент) tools по **stdio**.
 Протокол — JSON-RPC 2.0 с заголовком `Content-Length` (как Language Server Protocol).
